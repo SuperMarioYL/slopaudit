@@ -1,0 +1,53 @@
+{
+  "name": "slopaudit",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "Apache-2.0",
+  "description": "Zero-config CLI that audits a JS/TS repo for AI-generated code \"slop\" debt and emits a single SlopScore (0-100) plus a ranked file heatmap. 100% static, offline, deterministic.",
+  "bin": {
+    "slopaudit": "dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit",
+    "prepare": "tsc",
+    "prepublishOnly": "tsc"
+  },
+  "dependencies": {
+    "@babel/parser": "^7.25",
+    "chalk": "^5",
+    "commander": "^12",
+    "fast-glob": "^3.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "tsx": "^4",
+    "typescript": "^5.6",
+    "vitest": "^2"
+  },
+  "keywords": [
+    "ai-slop",
+    "code-quality",
+    "tech-debt",
+    "audit",
+    "static-analysis",
+    "typescript",
+    "agent"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SuperMarioYL/slopaudit.git"
+  },
+  "homepage": "https://github.com/SuperMarioYL/slopaudit#readme",
+  "bugs": {
+    "url": "https://github.com/SuperMarioYL/slopaudit/issues"
+  }
+}

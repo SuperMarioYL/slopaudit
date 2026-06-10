@@ -1,0 +1,14 @@
+node_modules
+dist
+*.log
+.DS_Store
+coverage
+slopaudit-report.html
+slopaudit-badge.svg
+*.tsbuildinfo
+
+# ai-radar internal build scratch (not part of the product)
+.build_brief.md
+.build_metadata.yaml
+.build_metadata.slices.yaml
+.builder_prompt.md
