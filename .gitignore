@@ -7,8 +7,13 @@ slopaudit-report.html
 slopaudit-badge.svg
 *.tsbuildinfo
 
-# ai-radar internal build scratch (not part of the product)
+# build scaffolding (not part of the project)
 .build_brief.md
 .build_metadata.yaml
 .build_metadata.slices.yaml
 .builder_prompt.md
+.spawn.*
+.builder_*
+.build_metadata*
+.stage_*
+BUILD_SETUP_NEXT_STEPS.md
