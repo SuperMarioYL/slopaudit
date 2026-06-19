@@ -25,7 +25,9 @@
 ## Table of contents
 
 - [What is SlopAudit?](#what-is-slopaudit)
+- [Architecture](#architecture)
 - [Quick start](#quick-start)
+- [Demo](#demo)
 - [How it works](#how-it-works)
 - [The three slop categories](#the-three-slop-categories)
 - [CLI usage](#cli-usage)
@@ -55,6 +57,20 @@ It is **100% static and heuristic** — no LLM calls, no network, no telemetry. 
 
 ---
 
+## <img src="https://api.iconify.design/tabler:topology-star-3.svg?color=%230071E3&width=24" height="22" align="absmiddle" alt=""> Architecture
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./assets/atlas-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="./assets/atlas-light.svg">
+    <img src="./assets/atlas-light.svg" width="880" alt="SlopAudit data flow: the CLI walks and parses a JS/TS repo to ASTs, runs three pure AST detectors, aggregates findings into a deterministic SlopScore (0–100), then renders a terminal report, HTML heatmap and SVG badge — all offline.">
+  </picture>
+</p>
+
+One command walks the repo (`scan/walk.ts`) and parses every JS/TS file to an AST (`scan/parse.ts`, `errorRecovery` so modern syntax never crashes the scan). Three **pure detectors** — `over_abstraction`, `generic_boilerplate`, `plausible_but_wrong` — turn that AST into weighted `SlopFinding`s, which `score/aggregate.ts` normalizes into one deterministic **SlopScore (0–100)**. The `report/` layer renders the same score three ways: a chalk terminal heatmap, a self-contained HTML report, and a shields-style SVG badge. The whole pipeline is static and offline — no LLM, no network, same repo → same score.
+
+---
+
 ## Quick start
 
 No install. One command in any JS/TS repo:
@@ -81,6 +97,16 @@ Wrote slopaudit-report.html, slopaudit-badge.svg
 ```
 
 Open `slopaudit-report.html` in any browser — it's fully self-contained (inline CSS, sortable file table, color-coded heatmap, no server, no external assets) and safe to send to your team.
+
+---
+
+## <img src="https://api.iconify.design/tabler:photo.svg?color=%230071E3&width=24" height="22" align="absmiddle" alt=""> Demo
+
+<p align="center">
+  <img src="./assets/demo.gif" alt="slopaudit audits a repo: SlopScore headline, ranked offender-file heatmap, then writes the HTML report and SVG badge" width="820" />
+</p>
+
+<sub>↑ Terminal recording (rendered in CI with <a href="https://github.com/charmbracelet/vhs">vhs</a> from <a href="./docs/demo.tape">docs/demo.tape</a>, regenerated on each tag).</sub>
 
 ---
 

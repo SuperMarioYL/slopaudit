@@ -1,0 +1,31 @@
+name: release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write
+
+jobs:
+  npm-pack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install, build, and pack the tarball
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build
+          mkdir -p release-artifacts
+          npm pack --pack-destination release-artifacts
+      - name: Publish tarball to the GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-artifacts/*.tgz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
