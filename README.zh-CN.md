@@ -167,6 +167,7 @@ slopaudit [path]            # 完整审计（默认路径 "."）
 | *(无)* | 完整审计：终端报告 + 在 cwd 写出 `slopaudit-report.html` 与 `slopaudit-badge.svg` |
 | `--list` | **m1 仅清单** —— 列出每个源文件及其行数，不打分 |
 | `--json` | 将 `SlopScore` 以 JSON 形式打印到 stdout（机器可读，适合 CI） |
+| `--fail-on <阈值>` | **CI 设卡** —— 当 SlopScore 达到或超过 `<阈值>`（band `clean`/`moderate`/`heavy`，或 `0–100` 整数）时以非零退出码退出 |
 | `--no-html` | 跳过写出 `slopaudit-report.html` |
 | `--no-badge` | 跳过写出 `slopaudit-badge.svg` |
 | `-v, --version` | 打印版本号 |
@@ -179,7 +180,21 @@ npx slopaudit ./packages/api        # 审计某个子包
 npx slopaudit . --json              # 将 SlopScore 以 JSON 打到 stdout（文件仍会写出）
 npx slopaudit . --json --no-html --no-badge   # 纯 stdout，不写任何文件 —— 适合 CI
 npx slopaudit . --list              # 仅文件清单 + 行数
+npx slopaudit . --fail-on moderate  # 仓库为 moderate 或更差时退出码为 1（CI 设卡）
+npx slopaudit . --fail-on 50        # SlopScore >= 50 时退出码为 1
 ```
+
+### 在 CI 中设卡
+
+`--fail-on` 把 SlopScore 变成一道 PR 关卡 —— 只需一步，无需服务、无需账号。分数越线时 CLI 以 `1` 退出，从而让任务失败：
+
+```yaml
+# .github/workflows/slop.yml
+- name: SlopAudit gate
+  run: npx slopaudit . --fail-on moderate --no-html --no-badge
+```
+
+`--fail-on` 可与 `--json` 组合：JSON 报告仍会在关卡决定退出码之前写到 stdout，因此你可以在同一次运行里既输出分数、又拦住 PR。
 
 ---
 
@@ -206,12 +221,13 @@ npx slopaudit . --list              # 仅文件清单 + 行数
 | `npx slopaudit .` 审计 | 无限 | 无限 |
 | HTML 热力图 + SVG 徽章 | ✓ | ✓ |
 | 离线 / 确定性 | ✓ | ✓ |
+| 用绝对阈值在 CI 中**拦截 PR**（`--fail-on`） | ✓ | ✓ |
 | 跨全组织仓库的 **SlopScore 历史趋势** | — | ✓ |
-| **在 CI 中设卡**（SlopScore 上升超过 N 就让 PR 失败） | — | ✓ |
+| 按*分数上升*设卡（与 main 的差值，而非仅绝对值） | — | ✓ |
 | 可向上汇报的领导看板 | — | ✓ |
 | 价格 | **免费** | **约 $15 / 活跃开发者 / 月** |
 
-免费 CLI 负责证明这个分数足够可信；团队版则让它*持续运转，并能与对代码库负责的人共享* —— 比一天的清理成本还便宜。欢迎通过 [Issues](https://github.com/SuperMarioYL/slopaudit/issues) 提出 "能不能进 CI / 能不能托管？" 的需求。
+免费 CLI 负责证明这个分数足够可信 —— 从 v0.2.0 起，它自己就能用绝对阈值（`--fail-on`）在 CI 中设卡。团队版补上单次 CLI 运行做不到的部分：*历史* —— 跨组织仓库追踪分数随时间的变化，并在 PR *抬高* slop 债（相对 main）时让其失败。欢迎通过 [Issues](https://github.com/SuperMarioYL/slopaudit/issues) 提出 "能不能用上托管历史版？" 的需求。
 
 ---
 
@@ -220,7 +236,8 @@ npx slopaudit . --list              # 仅文件清单 + 行数
 - [x] **m1 —— 扫描与解析：** 遍历仓库，把每个 JS/TS 文件解析成 AST（TSX、装饰器、现代语法）而不崩溃，产出 `--list` 清单。
 - [x] **m2 —— 打分与定位：** 三个 slop 检测器 → 加权 `SlopFinding` → 确定性的 `SlopScore（0–100）` + 按文件排名的热力图。
 - [x] **m3 —— 可分享报告：** chalk 终端摘要、自包含 HTML 热力图、以及 SVG SlopScore 徽章。
-- [ ] **托管团队版：** 跨组织仓库的 SlopScore 历史 + CI 设卡 + 领导看板。
+- [x] **m4 —— CI 设卡：** `--fail-on <band|score>` 在 SlopScore 越过阈值时以非零退出码退出，一步 workflow 即可拦住 PR。
+- [ ] **托管团队版：** 跨组织仓库的 SlopScore *历史* + 相对 main 的差值设卡 + 领导看板。
 - [ ] **更多语言：** Python / Go / Rust 检测器，复用同一套纯函数检测器接缝。
 - [ ] **更多检测器：** 社区贡献的 slop 类别。
 

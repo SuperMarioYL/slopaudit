@@ -167,6 +167,7 @@ slopaudit [path]            # full audit (default path ".")
 | *(none)* | Full audit: terminal report + writes `slopaudit-report.html` and `slopaudit-badge.svg` to cwd |
 | `--list` | **m1 inventory only** — list every source file with line counts, no scoring |
 | `--json` | Print the `SlopScore` as JSON to stdout (machine-readable, ideal for CI) |
+| `--fail-on <threshold>` | **CI gate** — exit non-zero when the SlopScore meets/exceeds `<threshold>` (a band `clean`/`moderate`/`heavy`, or an integer `0–100`) |
 | `--no-html` | Skip writing `slopaudit-report.html` |
 | `--no-badge` | Skip writing `slopaudit-badge.svg` |
 | `-v, --version` | Print the version |
@@ -179,7 +180,21 @@ npx slopaudit ./packages/api        # audit a sub-package
 npx slopaudit . --json              # SlopScore as JSON to stdout (files still written)
 npx slopaudit . --json --no-html --no-badge   # pure stdout, nothing written — CI friendly
 npx slopaudit . --list              # file inventory + line counts only
+npx slopaudit . --fail-on moderate  # exit 1 if the repo is moderate-or-heavy (CI gate)
+npx slopaudit . --fail-on 50        # exit 1 if SlopScore >= 50
 ```
+
+### Gate it in CI
+
+`--fail-on` turns the SlopScore into a pull-request gate — one step, no service, no account. The CLI exits `1` when the score crosses your threshold, so the job fails:
+
+```yaml
+# .github/workflows/slop.yml
+- name: SlopAudit gate
+  run: npx slopaudit . --fail-on moderate --no-html --no-badge
+```
+
+`--fail-on` composes with `--json`: the JSON report is still written to stdout before the gate decides the exit code, so you can both publish the score and block the PR in one run.
 
 ---
 
@@ -206,12 +221,13 @@ For teams that need to *watch* the score rather than spot-check it, a **hosted t
 | `npx slopaudit .` audits | Unlimited | Unlimited |
 | HTML heatmap + SVG badge | ✓ | ✓ |
 | Offline / deterministic | ✓ | ✓ |
-| SlopScore **history across all org repos** | — | ✓ |
-| **Gate it in CI** (fail the PR if SlopScore rises > N) | — | ✓ |
+| **Gate a PR in CI** on an absolute threshold (`--fail-on`) | ✓ | ✓ |
+| SlopScore **history / trend across all org repos** | — | ✓ |
+| Gate on a *rising* score (delta vs. main, not just absolute) | — | ✓ |
 | Dashboard to forward to leadership | — | ✓ |
 | Pricing | **Free** | **~$15 / active dev / month** |
 
-The free CLI proves the score is credible. The team tier makes it *continuous and shareable with the people accountable for the codebase* — cheaper than one day of cleanup. Inbound "can we get this in CI / hosted?" requests are welcome via [Issues](https://github.com/SuperMarioYL/slopaudit/issues).
+The free CLI proves the score is credible — and as of v0.2.0 it gates CI on an absolute threshold (`--fail-on`) on its own. The team tier adds what a single CLI run can't: *history* — tracking the score over time across an org's repos and failing a PR that *raises* slop debt relative to main. Inbound "can we get the hosted history tier?" requests are welcome via [Issues](https://github.com/SuperMarioYL/slopaudit/issues).
 
 ---
 
@@ -220,7 +236,8 @@ The free CLI proves the score is credible. The team tier makes it *continuous an
 - [x] **m1 — scan & parse:** walk a repo, parse every JS/TS file to an AST (TSX, decorators, modern syntax) without crashing, emit a `--list` inventory.
 - [x] **m2 — score & locate:** three slop detectors → weighted `SlopFinding`s → a deterministic `SlopScore (0–100)` + ranked per-file heatmap.
 - [x] **m3 — shareable report:** chalk terminal summary, self-contained HTML heatmap, and the SVG SlopScore badge.
-- [ ] **Hosted team tier:** SlopScore history across org repos + CI gating + leadership dashboard.
+- [x] **m4 — CI fail gate:** `--fail-on <band|score>` exits non-zero when the SlopScore crosses a threshold, so a PR can be blocked with one workflow step.
+- [ ] **Hosted team tier:** SlopScore *history* across org repos + delta-vs-main gating + leadership dashboard.
 - [ ] **More languages:** Python / Go / Rust detectors behind the same pure-function detector seam.
 - [ ] **More detectors:** community-contributed slop categories.
 
