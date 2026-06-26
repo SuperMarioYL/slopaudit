@@ -17,3 +17,4 @@ slopaudit-badge.svg
 .build_metadata*
 .stage_*
 BUILD_SETUP_NEXT_STEPS.md
+PUBLISH_BLOCKED.md
