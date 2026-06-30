@@ -13,7 +13,9 @@ function scoreOf(n: number): SlopScore {
 
 describe("resolveThreshold()", () => {
   it("maps band names to their lower-bound ceiling", () => {
-    expect(resolveThreshold("clean")).toBe(0);
+    // clean's ceiling is 1 (not 0) so a pristine 0/100 passes `--fail-on clean`
+    // — see fix-fail-on-clean-zero-always-trips.
+    expect(resolveThreshold("clean")).toBe(1);
     expect(resolveThreshold("moderate")).toBe(34);
     expect(resolveThreshold("heavy")).toBe(67);
   });
@@ -24,7 +26,9 @@ describe("resolveThreshold()", () => {
   });
 
   it("accepts integer thresholds in 0..100", () => {
-    expect(resolveThreshold("0")).toBe(0);
+    // numeric 0 means "fail on any slop" (ceiling 1) so a literal 0/100 passes.
+    expect(resolveThreshold("0")).toBe(1);
+    expect(resolveThreshold("1")).toBe(1);
     expect(resolveThreshold("50")).toBe(50);
     expect(resolveThreshold("100")).toBe(100);
   });
@@ -51,9 +55,18 @@ describe("gateTrips()", () => {
     expect(gateTrips(scoreOf(90), "heavy")).toBe(true);
   });
 
-  it("--fail-on clean trips on any non-negative score (ceiling 0)", () => {
-    expect(gateTrips(scoreOf(0), "clean")).toBe(true);
+  it("--fail-on clean trips on any slop but PASSES a pristine 0/100 (ceiling 1)", () => {
+    // fix-fail-on-clean-zero-always-trips: a flawless 0/100 repo must pass.
+    expect(gateTrips(scoreOf(0), "clean")).toBe(false);
+    expect(gateTrips(scoreOf(1), "clean")).toBe(true);
     expect(gateTrips(scoreOf(20), "clean")).toBe(true);
+  });
+
+  it("--fail-on 0 means 'fail on any slop' and PASSES a pristine 0/100", () => {
+    // numeric 0 mirrors the clean band: 0 itself passes, any slop trips.
+    expect(gateTrips(scoreOf(0), "0")).toBe(false);
+    expect(gateTrips(scoreOf(1), "0")).toBe(true);
+    expect(gateTrips(scoreOf(50), "0")).toBe(true);
   });
 
   it("numeric thresholds gate on score >= ceiling", () => {

@@ -71,6 +71,22 @@ describe("parseFile()", () => {
     expect(res.ast.type).toBe("File");
   });
 
+  it("parses a class with `@deco accessor x = 1` auto-accessor fields", () => {
+    // fix-parser-accessor-decorators: without the decoratorAutoAccessors plugin
+    // this threw a non-recoverable plugin error and the file was dropped (ast:null).
+    const src = `
+function logged(target: any) { return target; }
+class Counter {
+  @logged accessor count = 0;
+  inc() { this.count++; }
+}
+`;
+    const res = parseFile("accessor.ts", src);
+    expect(res.ast).not.toBeNull();
+    expect(res.ast.type).toBe("File");
+    expect(res.error).toBeUndefined();
+  });
+
   it("counts lines", () => {
     const res = parseFile("m.ts", "const a = 1;\nconst b = 2;\nconst c = 3;\n");
     expect(res.lineCount).toBe(4);

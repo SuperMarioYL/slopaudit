@@ -29,8 +29,9 @@
 - [Quick start](#quick-start)
 - [Demo](#demo)
 - [How it works](#how-it-works)
-- [The three slop categories](#the-three-slop-categories)
+- [The slop categories](#the-slop-categories)
 - [CLI usage](#cli-usage)
+- [GitHub Action](#github-action)
 - [The SlopScore badge (viral loop)](#the-slopscore-badge)
 - [Pricing](#pricing)
 - [Roadmap](#roadmap)
@@ -67,7 +68,7 @@ It is **100% static and heuristic** — no LLM calls, no network, no telemetry. 
   </picture>
 </p>
 
-One command walks the repo (`scan/walk.ts`) and parses every JS/TS file to an AST (`scan/parse.ts`, `errorRecovery` so modern syntax never crashes the scan). Three **pure detectors** — `over_abstraction`, `generic_boilerplate`, `plausible_but_wrong` — turn that AST into weighted `SlopFinding`s, which `score/aggregate.ts` normalizes into one deterministic **SlopScore (0–100)**. The `report/` layer renders the same score three ways: a chalk terminal heatmap, a self-contained HTML report, and a shields-style SVG badge. The whole pipeline is static and offline — no LLM, no network, same repo → same score.
+One command walks the repo (`scan/walk.ts`) and parses every JS/TS file to an AST (`scan/parse.ts`, `errorRecovery` so modern syntax never crashes the scan). Four **pure detectors** — `over_abstraction`, `generic_boilerplate`, `plausible_but_wrong`, and `dead_parameter` — turn that AST into weighted `SlopFinding`s, which `score/aggregate.ts` normalizes into one deterministic **SlopScore (0–100)**. The `report/` layer renders the same score three ways: a chalk terminal heatmap, a self-contained HTML report, and a shields-style SVG badge. The whole pipeline is static and offline — no LLM, no network, same repo → same score. In CI, the same gate ships as a packaged **GitHub Action** that writes the score to the job summary.
 
 ---
 
@@ -125,10 +126,11 @@ npx slopaudit .
                    modern syntax never crashes the scan)
       │
       ▼
- detectors/       three pure AST detectors → SlopFinding[]
+ detectors/       four pure AST detectors → SlopFinding[]
    ├─ overAbstraction.ts
    ├─ genericBoilerplate.ts
-   └─ plausibleButWrong.ts
+   ├─ plausibleButWrong.ts
+   └─ deadParameter.ts
       │
       ▼
  score/aggregate.ts   SlopFinding[] → SlopScore (weighted density,
@@ -136,13 +138,17 @@ npx slopaudit .
       │
       ▼
  report/          terminal.ts (chalk)  ·  html.ts (heatmap)  ·  badge.ts (SVG)
+      │
+      ▼
+ action.yml       composite GitHub Action → runs the --fail-on gate in CI,
+                  writes band + worst files to $GITHUB_STEP_SUMMARY
 ```
 
 Each detector is a **pure function** (`AST → SlopFinding[]`), independently unit-tested. That seam is where future categories and languages plug in. Every finding carries human-readable **evidence** (e.g. `"4-deep wrapper, single caller"`) — SlopAudit is a triage instrument you can verify, not a black-box verdict.
 
 ---
 
-## The three slop categories
+## The slop categories
 
 SlopAudit scores an **AI-specific axis** — not style, not correctness, but the patterns agents over-produce:
 
@@ -151,6 +157,7 @@ SlopAudit scores an **AI-specific axis** — not style, not correctness, but the
 | **`over_abstraction`** | Deep single-caller wrapper chains, needless factory/provider/manager layers, one-method interfaces, pass-through functions | `4-deep wrapper, single caller` |
 | **`generic_boilerplate`** | Near-duplicate scaffold blocks, copy-paste try/catch, trivial getters/setters en masse, TODO/placeholder comment density | `near-identical scaffold ×6` |
 | **`plausible_but_wrong`** | Empty catches that swallow errors, `any`-heavy signatures, unawaited promises, dead branches, contradictory guards | `empty catch swallows error` |
+| **`dead_parameter`** *(new in v0.3.0)* | Named function parameters wired into a signature but never read in the body — the `context`/`options` an agent added "just in case" | `parameter "ctx" is never used` |
 
 This is lint-clean slop: code that passes ESLint and compiles fine, but is the debt a human now has to untangle.
 
@@ -198,6 +205,45 @@ npx slopaudit . --fail-on 50        # exit 1 if SlopScore >= 50
 
 ---
 
+## GitHub Action
+
+*New in v0.3.0.* For GitHub repos, the same gate ships as a **packaged, reusable composite Action** — no `npx` boilerplate, and the SlopScore band + worst offenders are written straight to the **job summary**. Drop it into any workflow:
+
+```yaml
+# .github/workflows/slop.yml
+name: SlopAudit
+on: [pull_request]
+jobs:
+  slopaudit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: SuperMarioYL/slopaudit-action@v0.3.0
+        with:
+          path: "."          # directory to audit (default ".")
+          fail-on: moderate   # band clean|moderate|heavy, or an integer 0–100
+```
+
+| Input | Default | Effect |
+|---|---|---|
+| `path` | `.` | Directory to audit, relative to the workspace |
+| `fail-on` | *(empty)* | Threshold that fails the job (band or `0–100`). Leave empty to report the score in the summary **without** failing the build |
+| `version` | `0.3.0` | npm version/tag of `slopaudit` the Action runs |
+
+The job **fails** when the SlopScore meets or exceeds `fail-on`, and the run's **Summary** tab shows the band, the file counts, and a ranked "worst offenders" table — no inline-annotation setup required. The Action also exposes `score` and `band` as step outputs:
+
+```yaml
+      - uses: SuperMarioYL/slopaudit-action@v0.3.0
+        id: slop
+        with:
+          fail-on: heavy
+      - run: echo "SlopScore is ${{ steps.slop.outputs.score }} (${{ steps.slop.outputs.band }})"
+```
+
+> The Action is a thin composite wrapper around the same CLI gate — still 100% static, offline, and deterministic. Inline per-line PR annotations remain on the roadmap; v0.3.0 ships the Action + job-summary report.
+
+---
+
 ## The SlopScore badge
 
 Every run writes `slopaudit-badge.svg` — a shields-style flat badge colored by band (green `clean` / yellow `moderate` / red `heavy`). **Commit it and add it to your README:**
@@ -221,13 +267,13 @@ For teams that need to *watch* the score rather than spot-check it, a **hosted t
 | `npx slopaudit .` audits | Unlimited | Unlimited |
 | HTML heatmap + SVG badge | ✓ | ✓ |
 | Offline / deterministic | ✓ | ✓ |
-| **Gate a PR in CI** on an absolute threshold (`--fail-on`) | ✓ | ✓ |
+| **Gate a PR in CI** on an absolute threshold (`--fail-on` / packaged Action) | ✓ | ✓ |
 | SlopScore **history / trend across all org repos** | — | ✓ |
 | Gate on a *rising* score (delta vs. main, not just absolute) | — | ✓ |
 | Dashboard to forward to leadership | — | ✓ |
 | Pricing | **Free** | **~$15 / active dev / month** |
 
-The free CLI proves the score is credible — and as of v0.2.0 it gates CI on an absolute threshold (`--fail-on`) on its own. The team tier adds what a single CLI run can't: *history* — tracking the score over time across an org's repos and failing a PR that *raises* slop debt relative to main. Inbound "can we get the hosted history tier?" requests are welcome via [Issues](https://github.com/SuperMarioYL/slopaudit/issues).
+The free CLI proves the score is credible — and as of v0.3.0 it gates CI on an absolute threshold via a one-line **GitHub Action** (`--fail-on`) on its own. The team tier adds what a single CLI run can't: *history* — tracking the score over time across an org's repos and failing a PR that *raises* slop debt relative to main. Inbound "can we get the hosted history tier?" requests are welcome via [Issues](https://github.com/SuperMarioYL/slopaudit/issues).
 
 ---
 
@@ -237,6 +283,9 @@ The free CLI proves the score is credible — and as of v0.2.0 it gates CI on an
 - [x] **m2 — score & locate:** three slop detectors → weighted `SlopFinding`s → a deterministic `SlopScore (0–100)` + ranked per-file heatmap.
 - [x] **m3 — shareable report:** chalk terminal summary, self-contained HTML heatmap, and the SVG SlopScore badge.
 - [x] **m4 — CI fail gate:** `--fail-on <band|score>` exits non-zero when the SlopScore crosses a threshold, so a PR can be blocked with one workflow step.
+- [x] **m5 — GitHub Action:** packaged composite Action wrapping `--fail-on`, writing the band + worst offenders to the job summary (`uses: SuperMarioYL/slopaudit-action@v0.3.0`).
+- [x] **m6 — fourth detector:** `dead_parameter` (unused function parameters) through the pure-function detector seam.
+- [ ] **Inline PR annotations:** per-line review comments on the worst offenders (the Action ships the job-summary report first).
 - [ ] **Hosted team tier:** SlopScore *history* across org repos + delta-vs-main gating + leadership dashboard.
 - [ ] **More languages:** Python / Go / Rust detectors behind the same pure-function detector seam.
 - [ ] **More detectors:** community-contributed slop categories.

@@ -37,6 +37,11 @@ export function parseFile(filePath: string, code: string): ParseResult {
         "typescript",
         "jsx",
         "decorators-legacy",
+        // TC39/TS `@deco accessor x = 1` auto-accessor fields. Without this a
+        // standard accessor-field class throws a non-recoverable plugin error
+        // even with errorRecovery, parseFile returns ast:null, and the file is
+        // silently dropped from the audit — under-auditing any repo using them.
+        "decoratorAutoAccessors",
         "classProperties",
         "topLevelAwait",
       ],

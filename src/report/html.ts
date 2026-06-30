@@ -45,6 +45,7 @@ const CATEGORY_LABELS: Record<SlopCategory, string> = {
   over_abstraction: "Over-abstraction",
   generic_boilerplate: "Generic boilerplate",
   plausible_but_wrong: "Plausible-but-wrong",
+  dead_parameter: "Dead parameters",
 };
 
 /**

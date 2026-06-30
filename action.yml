@@ -1,0 +1,47 @@
+name: SlopAudit
+description: >-
+  Audit a JS/TS repo for AI-generated code slop, write the SlopScore band and
+  worst offenders to the job summary, and fail the build when the score crosses a
+  threshold. Wraps the slopaudit CLI --fail-on gate. 100% static, offline.
+author: SuperMarioYL
+branding:
+  icon: alert-triangle
+  color: red
+
+inputs:
+  path:
+    description: Directory to audit, relative to the workspace.
+    required: false
+    default: "."
+  fail-on:
+    description: >-
+      Threshold that fails the job: a band (clean|moderate|heavy) or an integer
+      0-100. The job fails when the SlopScore meets or exceeds it. Leave empty to
+      report the SlopScore in the job summary without failing the build.
+    required: false
+    default: ""
+  version:
+    description: >-
+      npm version/tag of slopaudit to run (e.g. "0.3.0" or "latest"). Defaults to
+      the version this Action ships with.
+    required: false
+    default: "0.3.0"
+
+outputs:
+  score:
+    description: The numeric SlopScore (0-100).
+    value: ${{ steps.run.outputs.score }}
+  band:
+    description: The SlopScore band (clean | moderate | heavy).
+    value: ${{ steps.run.outputs.band }}
+
+runs:
+  using: composite
+  steps:
+    - id: run
+      shell: bash
+      env:
+        SLOPAUDIT_PATH: ${{ inputs.path }}
+        SLOPAUDIT_FAIL_ON: ${{ inputs.fail-on }}
+        SLOPAUDIT_VERSION: ${{ inputs.version }}
+      run: node "${GITHUB_ACTION_PATH}/scripts/action-entrypoint.mjs"

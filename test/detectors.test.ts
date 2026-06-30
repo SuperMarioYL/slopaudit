@@ -4,6 +4,7 @@ import type { FileUnit } from "../src/scan/parse.js";
 import { detectOverAbstraction } from "../src/detectors/overAbstraction.js";
 import { detectGenericBoilerplate } from "../src/detectors/genericBoilerplate.js";
 import { detectPlausibleButWrong } from "../src/detectors/plausibleButWrong.js";
+import { detectDeadParameter } from "../src/detectors/deadParameter.js";
 
 /** Build a FileUnit from an inline code string, the same shape cli.ts produces. */
 function unit(code: string, file = "fixture.ts"): FileUnit {
@@ -107,5 +108,53 @@ async function broken(a: any, b: any): any {
 
   it("returns [] on clean code", () => {
     expect(detectPlausibleButWrong(unit(CLEAN))).toEqual([]);
+  });
+});
+
+describe("detectDeadParameter", () => {
+  it("fires on a named parameter that is never used in the body", () => {
+    const slop = `
+export function handle(req: Request, unusedCtx: Context): number {
+  return req.id;
+}
+`;
+    const findings = detectDeadParameter(unit(slop));
+    expect(findings.length).toBe(1);
+    expect(findings[0].category).toBe("dead_parameter");
+    expect(findings[0].evidence).toMatch(/unusedCtx/);
+    expect(findings[0].evidence).toMatch(/never used|dead parameter/);
+  });
+
+  it("does not flag a used parameter, even via shorthand / default", () => {
+    const ok = `
+export function build(a: number, b = 2) {
+  const obj = { a }; // shorthand counts as a use of a
+  return obj.a + b;  // b used; obj.a is a member, not a param ref
+}
+`;
+    expect(detectDeadParameter(unit(ok))).toEqual([]);
+  });
+
+  it("skips _-prefixed, destructured, rest, and arguments-using params", () => {
+    const tolerated = `
+export function a(_ignored: number) { return 1; }
+export function b({ x }: { x: number }) { return 0; }
+export function c(...rest: number[]) { return 0; }
+export function d(used: number) { return arguments.length + 0 * used; }
+`;
+    // `_ignored` skipped (underscore); destructured/rest never flagged;
+    // d uses `arguments` so we bail. None should fire.
+    expect(detectDeadParameter(unit(tolerated))).toEqual([]);
+  });
+
+  it("flags a dead arrow-function parameter (concise body)", () => {
+    const slop = `export const f = (a: number, dead: number) => a + 1;`;
+    const findings = detectDeadParameter(unit(slop));
+    expect(findings.length).toBe(1);
+    expect(findings[0].evidence).toMatch(/dead/);
+  });
+
+  it("returns [] on clean code", () => {
+    expect(detectDeadParameter(unit(CLEAN))).toEqual([]);
   });
 });

@@ -11,6 +11,7 @@ import { parseFile } from "./scan/parse.js";
 import { detectOverAbstraction } from "./detectors/overAbstraction.js";
 import { detectGenericBoilerplate } from "./detectors/genericBoilerplate.js";
 import { detectPlausibleButWrong } from "./detectors/plausibleButWrong.js";
+import { detectDeadParameter } from "./detectors/deadParameter.js";
 import { aggregate } from "./score/aggregate.js";
 import { gateTrips, InvalidThresholdError } from "./gate/threshold.js";
 import { renderTerminal, renderInventory } from "./report/terminal.js";
@@ -94,12 +95,30 @@ async function runAudit(rootArg: string, opts: RunOptions): Promise<void> {
     findings.push(...detectOverAbstraction(unit));
     findings.push(...detectGenericBoilerplate(unit));
     findings.push(...detectPlausibleButWrong(unit));
+    findings.push(...detectDeadParameter(unit));
   }
 
   const score = aggregate(findings, {
     filesScanned: units.length,
     linesScanned,
   });
+
+  // fix-empty-scan-silent-pass: an empty file list (non-existent root, typo'd
+  // workdir, or a dir with no JS/TS) yields score 0 / band "clean" / filesScanned
+  // 0 — a false green in the headline CI gate. Treat "nothing audited" as a usage
+  // error (exit 2) rather than a pristine pass. In --json mode we still emit the
+  // empty score first so machine consumers see filesScanned: 0, then exit 2
+  // without applying the gate (there is nothing to gate on).
+  if (score.filesScanned === 0) {
+    if (opts.json) {
+      process.stdout.write(JSON.stringify(score, null, 2) + "\n");
+    }
+    process.stderr.write(
+      `slopaudit: no JS/TS source files found under ${root} — nothing audited\n`,
+    );
+    process.exitCode = 2;
+    return;
+  }
 
   if (opts.json) {
     process.stdout.write(JSON.stringify(score, null, 2) + "\n");
@@ -177,6 +196,18 @@ program
   .action(async (path: string, opts: RunOptions) => {
     try {
       if (opts.list) {
+        // fix-list-ignores-fail-on: --list only prints the inventory and never
+        // evaluates the gate, so a `--list --fail-on …` step looks like it gates
+        // but silently doesn't. Reject the combination as a usage error (exit 2)
+        // rather than dropping --fail-on on the floor.
+        if (opts.failOn !== undefined) {
+          process.stderr.write(
+            "slopaudit: --fail-on has no effect with --list (inventory mode does " +
+              "not compute a SlopScore); drop --list to gate, or drop --fail-on\n",
+          );
+          process.exitCode = 2;
+          return;
+        }
         await runList(path);
       } else {
         await runAudit(path, opts);

@@ -1,4 +1,8 @@
-export type SlopCategory = "over_abstraction" | "generic_boilerplate" | "plausible_but_wrong";
+export type SlopCategory =
+  | "over_abstraction"
+  | "generic_boilerplate"
+  | "plausible_but_wrong"
+  | "dead_parameter";
 
 export interface SlopFinding {
   file: string;
