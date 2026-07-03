@@ -10,7 +10,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Planned
 - Hosted team tier: SlopScore *history* across org repos, delta-vs-main gating, leadership dashboard.
 - Additional language detectors (Python / Go / Rust) behind the existing pure-function detector seam.
-- Inline per-line PR annotations (the v0.3.0 Action ships the job-summary report; per-line annotations remain deferred).
+
+## [0.4.0] - 2026-07-04
+
+Growth-wedge + detector-seam release. No new primitive and no new SlopScore band —
+two in-seam feature milestones the v0.3.0 plan named as the next steps.
+
+### Added
+- **m7 — inline per-line PR annotations.** A new `--format github` CLI mode emits a
+  GitHub Actions `::warning file=…,line=…::…` workflow command for every
+  `SlopFinding` (pure formatter over the existing score — every finding already
+  carries file + line + evidence; property values and messages are escaped per the
+  workflow-command spec). The packaged Action now drops these per-line slop
+  annotations onto the PR diff automatically, from the same run that writes the job
+  summary — no extra setup. Retires the "inline annotations deferred" note.
+- **m8 — fifth detector `copy_paste_clone`.** A near-duplicate-block detector added
+  through the same pure `AST -> SlopFinding[]` seam. It is the *fuzzy* complement to
+  `generic_boilerplate`'s exact duplicate-block check: it fingerprints each statement
+  structurally (identifier names + literal values ignored) and flags a block whose
+  statement multiset overlaps an earlier block by ≥75% (Dice) while **excluding
+  exact-ordered clones** — so it catches reordered / lightly-edited copies the exact
+  matcher slides past, without double-counting what `generic_boilerplate` already
+  flags. Folds into the existing SlopScore with no new band.
+
+### Changed
+- `package.json` version → `0.4.0`.
+- `out_of_scope` no longer defers inline per-line PR annotations (shipped in m7).
 
 ## [0.3.0] - 2026-07-01
 

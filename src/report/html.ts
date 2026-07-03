@@ -46,6 +46,7 @@ const CATEGORY_LABELS: Record<SlopCategory, string> = {
   generic_boilerplate: "Generic boilerplate",
   plausible_but_wrong: "Plausible-but-wrong",
   dead_parameter: "Dead parameters",
+  copy_paste_clone: "Copy-paste clones",
 };
 
 /**

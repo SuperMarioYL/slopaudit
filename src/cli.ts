@@ -12,11 +12,13 @@ import { detectOverAbstraction } from "./detectors/overAbstraction.js";
 import { detectGenericBoilerplate } from "./detectors/genericBoilerplate.js";
 import { detectPlausibleButWrong } from "./detectors/plausibleButWrong.js";
 import { detectDeadParameter } from "./detectors/deadParameter.js";
+import { detectCopyPasteClone } from "./detectors/copyPasteClone.js";
 import { aggregate } from "./score/aggregate.js";
 import { gateTrips, InvalidThresholdError } from "./gate/threshold.js";
 import { renderTerminal, renderInventory } from "./report/terminal.js";
 import { renderHtml } from "./report/html.js";
 import { renderBadge } from "./report/badge.js";
+import { renderGithubAnnotations } from "./report/github.js";
 import type { FileUnit } from "./scan/parse.js";
 import type { SlopFinding } from "./types.js";
 
@@ -46,6 +48,7 @@ interface RunOptions {
   badge?: boolean; // commander: --no-badge => badge === false
   list?: boolean;
   failOn?: string; // m4: --fail-on <band|score> CI gate threshold
+  format?: string; // m7: --format github => GitHub Actions inline annotations
 }
 
 /**
@@ -96,6 +99,7 @@ async function runAudit(rootArg: string, opts: RunOptions): Promise<void> {
     findings.push(...detectGenericBoilerplate(unit));
     findings.push(...detectPlausibleButWrong(unit));
     findings.push(...detectDeadParameter(unit));
+    findings.push(...detectCopyPasteClone(unit));
   }
 
   const score = aggregate(findings, {
@@ -117,6 +121,19 @@ async function runAudit(rootArg: string, opts: RunOptions): Promise<void> {
       `slopaudit: no JS/TS source files found under ${root} — nothing audited\n`,
     );
     process.exitCode = 2;
+    return;
+  }
+
+  if (opts.format === "github") {
+    // m7: emit one `::warning file=…,line=…::…` workflow command per finding so
+    // the packaged Action renders inline per-line slop annotations on the PR
+    // diff. Pure formatter over the same score; the gate still applies (after
+    // the annotations are written) exactly like --json.
+    const annotations = renderGithubAnnotations(score);
+    if (annotations.length > 0) {
+      process.stdout.write(annotations + "\n");
+    }
+    applyGate(score, opts.failOn);
     return;
   }
 
@@ -186,6 +203,10 @@ program
   .version(VERSION, "-v, --version", "output the version number")
   .argument("[path]", "directory to audit", ".")
   .option("--json", "print the SlopScore as JSON to stdout (for CI)")
+  .option(
+    "--format <format>",
+    "output format: 'github' emits a GitHub Actions ::warning workflow command per finding (inline per-line PR annotations)",
+  )
   .option("--no-html", "skip writing slopaudit-report.html")
   .option("--no-badge", "skip writing slopaudit-badge.svg")
   .option("--list", "m1 inventory only: list files + line counts, no scoring")

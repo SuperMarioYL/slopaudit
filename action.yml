@@ -1,8 +1,9 @@
 name: SlopAudit
 description: >-
   Audit a JS/TS repo for AI-generated code slop, write the SlopScore band and
-  worst offenders to the job summary, and fail the build when the score crosses a
-  threshold. Wraps the slopaudit CLI --fail-on gate. 100% static, offline.
+  worst offenders to the job summary, drop per-line slop annotations onto the PR
+  diff, and fail the build when the score crosses a threshold. Wraps the slopaudit
+  CLI --fail-on gate. 100% static, offline.
 author: SuperMarioYL
 branding:
   icon: alert-triangle

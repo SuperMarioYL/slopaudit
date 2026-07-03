@@ -56,11 +56,40 @@ try {
 
 writeStepSummary(score, failOn);
 setOutputs(score);
+emitAnnotations(score);
 
 // Propagate the CLI exit code (1 = gate tripped, 2 = usage/empty-scan, 0 = pass).
 process.exit(result.status ?? 0);
 
 // ---------------------------------------------------------------------------
+
+/**
+ * m7 — emit a GitHub Actions `::warning file=…,line=…::…` workflow command for
+ * every SlopFinding in the same run that wrote the job summary, so the Action
+ * surfaces per-line slop annotations inline on the PR diff with no extra setup.
+ * Reads findings straight off the parsed SlopScore JSON (the CLI already carries
+ * file + line + evidence on each finding); mirrors src/report/github.ts.
+ */
+function emitAnnotations(scoreObj) {
+  if (!scoreObj || !Array.isArray(scoreObj.findings)) return;
+  for (const f of scoreObj.findings) {
+    if (!f || typeof f.file !== "string" || typeof f.line !== "number") continue;
+    const file = escapeProp(f.file);
+    const title = escapeProp("SlopAudit: " + String(f.category ?? "slop"));
+    const message = escapeData(`${f.category ?? "slop"} — ${f.evidence ?? ""}`);
+    process.stdout.write(
+      `::warning file=${file},line=${f.line},title=${title}::${message}\n`,
+    );
+  }
+}
+
+function escapeData(s) {
+  return String(s).replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
+}
+
+function escapeProp(s) {
+  return escapeData(s).replace(/:/g, "%3A").replace(/,/g, "%2C");
+}
 
 function writeStepSummary(score, failOnRaw) {
   const summaryPath = process.env.GITHUB_STEP_SUMMARY;

@@ -2,7 +2,8 @@ export type SlopCategory =
   | "over_abstraction"
   | "generic_boilerplate"
   | "plausible_but_wrong"
-  | "dead_parameter";
+  | "dead_parameter"
+  | "copy_paste_clone";
 
 export interface SlopFinding {
   file: string;
