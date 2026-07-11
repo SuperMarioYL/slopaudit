@@ -157,4 +157,26 @@ export function d(used: number) { return arguments.length + 0 * used; }
   it("returns [] on clean code", () => {
     expect(detectDeadParameter(unit(CLEAN))).toEqual([]);
   });
+
+  // v0.5.0 fix-dead-param-signature-reference: a parameter used only in the
+  // signature (a later param's default, or a type position) was searched only
+  // against the body and false-flagged as dead.
+  it("does not flag a parameter used only in a later param's default value", () => {
+    const code = `export function f(a: number, b: number = a): number { return b; }`;
+    const findings = detectDeadParameter(unit(code));
+    expect(findings.some((x) => /"a"/.test(x.evidence))).toBe(false);
+  });
+  it("does not flag a parameter used only in the return type (typeof)", () => {
+    // `x` appears ONLY in the return type `typeof x`, never in the body — so a
+    // body-only reference search would false-flag it as dead.
+    const code = `export function g(x: number): typeof x { return 0 as never; }`;
+    const findings = detectDeadParameter(unit(code));
+    expect(findings.some((f) => /"x"/.test(f.evidence))).toBe(false);
+  });
+  it("still flags a genuinely dead parameter alongside signature-only uses", () => {
+    const code = `export function h(a: number, b: number = a, dead: number): number { return b; }`;
+    const findings = detectDeadParameter(unit(code));
+    expect(findings.some((x) => /"dead"/.test(x.evidence))).toBe(true);
+    expect(findings.some((x) => /"a"/.test(x.evidence))).toBe(false);
+  });
 });

@@ -95,4 +95,25 @@ describe("aggregate()", () => {
     // the heavier file has the higher density
     expect(r.byFile["a.ts"]).toBeGreaterThan(r.byFile["b.ts"]);
   });
+
+  // v0.5.0 fix-byfile-repo-average-density: byFile used the repo-average line
+  // count for every file, so a small dense file and a large file with the same
+  // finding count got an identical density. With real per-file line counts the
+  // small file must rank strictly higher.
+  it("ranks a small dense file above a large file with real per-file line counts", () => {
+    const findings: SlopFinding[] = [
+      finding({ file: "small.ts", line: 1, weight: 0.4, category: "dead_parameter" }),
+      finding({ file: "big.ts", line: 1, weight: 0.4, category: "dead_parameter" }),
+    ];
+    const meta = {
+      filesScanned: 2,
+      linesScanned: 105,
+      linesByFile: { "small.ts": 5, "big.ts": 100 },
+    };
+    const r = aggregate(findings, meta);
+    expect(r.byFile["small.ts"]).toBeGreaterThan(r.byFile["big.ts"]);
+    // Without per-file line counts the two are equal (the pre-fix behavior).
+    const proxy = aggregate(findings, { filesScanned: 2, linesScanned: 105 });
+    expect(proxy.byFile["small.ts"]).toBeCloseTo(proxy.byFile["big.ts"], 10);
+  });
 });

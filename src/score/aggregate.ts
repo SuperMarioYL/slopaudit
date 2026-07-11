@@ -39,7 +39,18 @@ function clamp01(n: number): number {
  */
 export function aggregate(
   findings: SlopFinding[],
-  meta: { filesScanned: number; linesScanned: number },
+  meta: {
+    filesScanned: number;
+    linesScanned: number;
+    /**
+     * Real line count per file (absolute path -> lines). When supplied, the
+     * byFile heatmap is computed against each file's OWN size instead of the
+     * repo average, so a small dense file correctly outranks a large file with
+     * the same finding count. Optional + back-compatible: when omitted, byFile
+     * falls back to the repo-average proxy (the pre-fix behavior).
+     */
+    linesByFile?: Record<string, number>;
+  },
 ): SlopScore {
   const sorted = [...findings].sort(compareFindings);
 
@@ -60,13 +71,18 @@ export function aggregate(
   }
 
   const avgLinesPerFile = filesScanned > 0 ? linesScanned / filesScanned : 0;
+  const linesByFile = meta.linesByFile ?? {};
 
   const byFile: Record<string, number> = {};
   for (const file of Object.keys(perFileWeight).sort()) {
     const w = perFileWeight[file];
-    // density = weighted findings per ~100 lines of an average file.
-    // Saturating: 1 unit of weight per average-file ~= heavy.
-    const denom = avgLinesPerFile > 0 ? avgLinesPerFile / 100 : 1;
+    // density = weighted findings per ~100 lines of THIS file. Prefer the file's
+    // real line count (threaded through from the parser) so a small dense file
+    // ranks above a large file with the same finding count; fall back to the
+    // repo average only when a per-file count is unavailable. Saturating: ~1 unit
+    // of weight per 100 lines ~= heavy.
+    const fileLines = linesByFile[file] ?? avgLinesPerFile;
+    const denom = fileLines > 0 ? fileLines / 100 : 1;
     const density = denom > 0 ? w / denom : w;
     byFile[file] = clamp01(1 - Math.exp(-density));
   }

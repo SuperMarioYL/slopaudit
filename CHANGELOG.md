@@ -11,6 +11,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Hosted team tier: SlopScore *history* across org repos, delta-vs-main gating, leadership dashboard.
 - Additional language detectors (Python / Go / Rust) behind the existing pure-function detector seam.
 
+## [0.5.0] - 2026-07-11
+
+Correctness release. Two precision/accuracy fixes from a source audit of the
+shipped v0.4.0 detectors — no new detector, ecosystem, or CLI surface.
+
+### Fixed
+- **`dead_parameter` no longer false-flags a parameter used only in the function
+  signature** (`src/detectors/deadParameter.ts`). The detector searched only the
+  function *body* for a reference, so a parameter used solely in a later
+  parameter's default initializer (`function f(a, b = a)`) or in a type position
+  (a parameter/return type such as `function g(x): typeof x`) was reported as a
+  dead parameter even though it is genuinely used. For a slop linter a false
+  positive erodes trust in the whole score, so the reference search now also
+  covers sibling parameters' default values, parameter type annotations, and the
+  return type — never a parameter's own binding — so a signature-only use counts.
+  Genuinely dead parameters are still flagged. Guarded by regression tests.
+- **`byFile` heatmap now ranks by each file's real slop density**
+  (`src/score/aggregate.ts`, `src/cli.ts`). The per-file "worst offenders"
+  density used the *repo-average* lines-per-file for every file, so a 5-line file
+  with one finding and a 200-line file with one finding received an identical
+  density — misranking the headline heatmap. The real per-file line counts (which
+  the parser already computes) are now threaded into `aggregate`, so a small dense
+  file correctly outranks a large file with the same finding count. The change is
+  backward-compatible: when per-file counts are absent the previous repo-average
+  proxy is used. Guarded by a regression test.
+
 ## [0.4.0] - 2026-07-04
 
 Growth-wedge + detector-seam release. No new primitive and no new SlopScore band —

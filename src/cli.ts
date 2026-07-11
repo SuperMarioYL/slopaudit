@@ -93,8 +93,10 @@ async function runAudit(rootArg: string, opts: RunOptions): Promise<void> {
 
   const findings: SlopFinding[] = [];
   let linesScanned = 0;
+  const linesByFile: Record<string, number> = {};
   for (const unit of units) {
     linesScanned += unit.lineCount;
+    linesByFile[unit.file] = unit.lineCount;
     findings.push(...detectOverAbstraction(unit));
     findings.push(...detectGenericBoilerplate(unit));
     findings.push(...detectPlausibleButWrong(unit));
@@ -105,6 +107,9 @@ async function runAudit(rootArg: string, opts: RunOptions): Promise<void> {
   const score = aggregate(findings, {
     filesScanned: units.length,
     linesScanned,
+    // Real per-file line counts so the byFile heatmap ranks by each file's own
+    // slop density, not the repo average.
+    linesByFile,
   });
 
   // fix-empty-scan-silent-pass: an empty file list (non-existent root, typo'd

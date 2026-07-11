@@ -39,8 +39,24 @@ export function detectDeadParameter(unit: FileUnit): SlopFinding[] {
     // avoid false positives.
     if (referencesIdentifier(body, "arguments")) return;
 
+    // A parameter is "used" if it is referenced in the body OR anywhere in the
+    // signature it can legitimately appear: a sibling parameter's default
+    // initializer (`f(a, b = a)`), a parameter's type annotation, or the return
+    // type (`function f(x): typeof x`). Searching only the body false-flagged
+    // those signature-only uses as dead parameters. We add ONLY the default-value
+    // (`.right`) and type-annotation positions — never a parameter's own binding
+    // identifier — so a bare binding is not mistaken for a reference to itself.
+    const refRoots: any[] = [body];
+    for (const q of node.params ?? []) {
+      if (q && q.type === "AssignmentPattern" && q.right) refRoots.push(q.right);
+      if (q && q.typeAnnotation) refRoots.push(q.typeAnnotation);
+    }
+    if (node.returnType) refRoots.push(node.returnType);
+    const isUsed = (name: string): boolean =>
+      refRoots.some((r) => referencesIdentifier(r, name));
+
     for (const p of named) {
-      if (referencesIdentifier(body, p.name)) continue;
+      if (isUsed(p.name)) continue;
       findings.push({
         file: unit.file,
         line: p.line,
