@@ -1,0 +1,88 @@
+{
+  "schema": 1,
+  "name": "slopaudit",
+  "github": "https://github.com/SuperMarioYL/slopaudit",
+  "host": "slopaudit.lei6393.com",
+  "lang": { "primary": "zh", "toggle": true },
+  "accent": ["#e05d44", "#f0916a", "#a3341f"],
+  "hero": {
+    "eyebrow": { "zh": "零配置 · 离线 · 确定性", "en": "Zero-config · Offline · Deterministic" },
+    "headline": {
+      "zh": "给 agent 留下的 AI 代码债\n打一个确定的分数",
+      "en": "Score the AI slop\nyour agents left behind"
+    },
+    "sub": {
+      "zh": "五个纯 AST 检测器把你的 JS/TS 仓库压成一个确定的 SlopScore(0–100)和按文件排序的热力图 —— 全程静态、离线、不调用任何大模型。",
+      "en": "Five pure AST detectors turn your JS/TS repo into one deterministic SlopScore (0–100) and a ranked per-file heatmap — fully static, offline, no LLM calls."
+    },
+    "command": "npx slopaudit .",
+    "cta": { "zh": "开始使用", "en": "Get started" },
+    "ctaGithub": { "zh": "在 GitHub 查看", "en": "View on GitHub" }
+  },
+  "advantages": [
+    {
+      "title": { "zh": "一个分数,精确到每个文件", "en": "One score, down to every file" },
+      "body": {
+        "zh": "五个纯函数检测器给出加权 slop 密度,归一化成 0–100 的 SlopScore,分 clean(<34)/moderate(34–66)/heavy(>66) 三档,再列出最脏文件的排序热力图。每条发现都带可读证据(如“4 层包装、单一调用者”),是可核对的分诊工具,不是黑盒结论。",
+        "en": "Five pure-function detectors produce a weighted slop density, normalized into a 0–100 SlopScore banded clean (<34) / moderate (34–66) / heavy (>66), plus a ranked heatmap of the worst files. Every finding carries human-readable evidence (e.g. \"4-deep wrapper, single caller\") — a triage instrument you can verify, not a black-box verdict."
+      },
+      "chips": [
+        "› SlopScore 0–100",
+        "› clean · moderate · heavy"
+      ]
+    },
+    {
+      "title": { "zh": "检测 agent 特有的模式,而非代码风格", "en": "Catches agent-specific patterns, not style" },
+      "body": {
+        "zh": "over_abstraction、generic_boilerplate、plausible_but_wrong、dead_parameter、copy_paste_clone —— 五类 agent 高产的模式:多层单调用者包装、复制粘贴脚手架、吞掉异常的空 catch、从没被读到的参数、被轻改过的近似重复块。这些都是过得了 ESLint、编译也没错,却要人来还的债。",
+        "en": "over_abstraction, generic_boilerplate, plausible_but_wrong, dead_parameter and copy_paste_clone — five patterns agents over-produce: deep single-caller wrappers, copy-paste scaffolds, empty catches that swallow errors, parameters that are never read, and near-duplicate blocks that were lightly edited. Lint-clean slop that passes ESLint and compiles fine, but a human still has to untangle."
+      },
+      "chips": [
+        "› 5 个纯 AST 检测器",
+        "› 各自独立单测"
+      ]
+    },
+    {
+      "title": { "zh": "一行命令,在 PR 上设卡", "en": "Gate a PR in one line" },
+      "body": {
+        "zh": "--fail-on <clean|moderate|heavy|0–100> 让 SlopScore 一超阈值就退出非零,一步卡住 PR,不需要服务、不需要账号。打包成 GitHub Action 后,把档位和最脏文件写进 job summary,并把每条发现作为行内注释落到 PR diff 的对应行上。",
+        "en": "--fail-on <clean|moderate|heavy|0–100> exits non-zero the moment the SlopScore crosses your threshold, blocking a PR in one step — no service, no account. Packaged as a GitHub Action, it writes the band and worst files to the job summary and drops each finding as an inline annotation on the exact line of the PR diff."
+      },
+      "chips": [
+        "› --fail-on 阈值门",
+        "› 行内 PR 注释"
+      ]
+    },
+    {
+      "title": { "zh": "零配置 · 离线 · 每次一致", "en": "Zero-config, offline, identical every run" },
+      "body": {
+        "zh": "一条 npx slopaudit . 就跑,不用装、不用配。全程纯静态启发式:不调用大模型、不联网、无遥测。同一个仓库每次跑分完全一致,两分钟内产出终端报告、自包含的 HTML 热力图和 SVG 徽章。",
+        "en": "One command — npx slopaudit . — nothing to install or configure. Purely static heuristics: no LLM calls, no network, no telemetry. The same repo scores identically every run, producing a terminal report, a self-contained HTML heatmap and an SVG badge in under two minutes."
+      },
+      "chips": [
+        "› 无 LLM · 无网络",
+        "› 自包含 HTML + SVG 徽章"
+      ]
+    }
+  ],
+  "scene": {
+    "kind": "particle-field"
+  },
+  "cta": {
+    "headline": {
+      "zh": "先量化,再清理",
+      "en": "Measure it before you clean it"
+    },
+    "sub": {
+      "zh": "免费、开源(Apache-2.0)、离线。个人与开源项目永久免费,一条命令即可拿到分数。",
+      "en": "Free, open source (Apache-2.0), offline. Free forever for individuals and OSS — one command to get your score."
+    },
+    "button": { "zh": "在 GitHub 上开始", "en": "Get started on GitHub" }
+  },
+  "footer": {
+    "tag": {
+      "zh": "给 AI 生成代码打分的零配置 CLI",
+      "en": "The zero-config CLI that scores AI-generated code slop"
+    }
+  }
+}
