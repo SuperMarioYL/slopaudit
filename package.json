@@ -1,6 +1,6 @@
 {
   "name": "slopaudit",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "type": "module",
   "license": "Apache-2.0",
   "description": "Zero-config CLI that audits a JS/TS repo for AI-generated code \"slop\" debt and emits a single SlopScore (0-100) plus a ranked file heatmap. 100% static, offline, deterministic.",

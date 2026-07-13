@@ -11,6 +11,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Hosted team tier: SlopScore *history* across org repos, delta-vs-main gating, leadership dashboard.
 - Additional language detectors (Python / Go / Rust) behind the existing pure-function detector seam.
 
+## [0.6.0] - 2026-07-14
+
+Correctness release. Two false-negative fixes from a source audit of the shipped
+v0.5.0 detectors and reporters — no new detector, ecosystem, or CLI surface.
+
+### Fixed
+- **GitHub PR annotations now attach to the diff.** The `--format github` emitter
+  (`src/report/github.ts`) and the packaged Action's entrypoint
+  (`scripts/action-entrypoint.mjs`) emitted each `::warning file=…` workflow
+  command with the scanner's *absolute* file path. GitHub only attaches an
+  annotation to a line of the PR diff when `file` is a path relative to the
+  workspace root, so every inline slop annotation — the whole point of the v0.4.0
+  m7 feature — was silently dropped from the diff. Finding paths are now
+  relativized to the working directory (the workspace root under Actions) and
+  normalized to POSIX separators. Guarded by a regression test.
+- **Unreachable code after a hoisted declaration is no longer missed.** The
+  unreachable-code check in `src/detectors/plausibleButWrong.ts` stopped scanning
+  at the first hoisted declaration following a terminating statement, so a block
+  like `return; function helper() {} ; runDeadCode();` left the genuinely
+  unreachable `runDeadCode()` unflagged (a silent false negative on a category the
+  README advertises). The scan now skips past hoisted declarations
+  (function/var/class/type) and reports the first truly-dead statement after the
+  terminator. Guarded by regression tests.
+
 ## [0.5.0] - 2026-07-11
 
 Correctness release. Two precision/accuracy fixes from a source audit of the
@@ -100,7 +124,10 @@ deterministic.
 - **m3 — shareable report:** `report/terminal.ts` (chalk headline + ranked top-10 offender files), `report/html.ts` (self-contained `slopaudit-report.html` heatmap, sortable, no external assets), and `report/badge.ts` (shields-style `slopaudit-badge.svg` colored by band).
 - CLI flags: `--list`, `--json`, `--no-html`, `--no-badge`, `--version`, `--help`.
 
-[Unreleased]: https://github.com/SuperMarioYL/slopaudit/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/SuperMarioYL/slopaudit/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/SuperMarioYL/slopaudit/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/SuperMarioYL/slopaudit/compare/v0.4.0...v0.5.0
+[0.4.0]: https://github.com/SuperMarioYL/slopaudit/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/SuperMarioYL/slopaudit/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/SuperMarioYL/slopaudit/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/SuperMarioYL/slopaudit/compare/v0.1.0...v0.1.1

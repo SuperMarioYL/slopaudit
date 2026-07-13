@@ -190,29 +190,43 @@ function collectUnreachable(block: any, unit: FileUnit, out: SlopFinding[]): voi
 }
 
 function collectUnreachableInList(stmts: any[], unit: FileUnit, out: SlopFinding[]): void {
+  // Find the first terminator in the list. Everything after it is unreachable
+  // except hoisted declarations (whose *binding* is hoisted).
+  let termIdx = -1;
   for (let i = 0; i < stmts.length - 1; i++) {
     if (isTerminator(stmts[i])) {
-      const dead = stmts[i + 1];
-      // function/var declarations are hoisted — not truly dead
-      if (
-        dead.type === "FunctionDeclaration" ||
-        dead.type === "VariableDeclaration" ||
-        dead.type === "ClassDeclaration" ||
-        dead.type === "TSInterfaceDeclaration" ||
-        dead.type === "TSTypeAliasDeclaration" ||
-        dead.type === "EmptyStatement"
-      ) {
-        continue;
-      }
-      out.push({
-        file: unit.file,
-        line: lineOf(dead),
-        category: "plausible_but_wrong",
-        weight: 0.65,
-        evidence: `unreachable code after ${terminatorWord(stmts[i])}`,
-      });
-      break; // one report per block is enough
+      termIdx = i;
+      break;
     }
+  }
+  if (termIdx === -1) return;
+
+  // Report the first genuinely-dead statement after the terminator. Skipping the
+  // hoisted declarations rather than stopping at them fixes a false negative: a
+  // `return; function helper(){}; realDeadCode();` block left the truly
+  // unreachable `realDeadCode()` unflagged because the scan gave up at the
+  // hoisted function declaration instead of continuing past it.
+  for (let j = termIdx + 1; j < stmts.length; j++) {
+    const dead = stmts[j];
+    // function/var/class/type declarations are hoisted — not truly dead.
+    if (
+      dead.type === "FunctionDeclaration" ||
+      dead.type === "VariableDeclaration" ||
+      dead.type === "ClassDeclaration" ||
+      dead.type === "TSInterfaceDeclaration" ||
+      dead.type === "TSTypeAliasDeclaration" ||
+      dead.type === "EmptyStatement"
+    ) {
+      continue;
+    }
+    out.push({
+      file: unit.file,
+      line: lineOf(dead),
+      category: "plausible_but_wrong",
+      weight: 0.65,
+      evidence: `unreachable code after ${terminatorWord(stmts[termIdx])}`,
+    });
+    return; // one report per block is enough
   }
 }
 

@@ -109,6 +109,53 @@ async function broken(a: any, b: any): any {
   it("returns [] on clean code", () => {
     expect(detectPlausibleButWrong(unit(CLEAN))).toEqual([]);
   });
+
+  it("flags unreachable code directly after a terminator", () => {
+    const code = `
+function g() {
+  return 1;
+  doDeadThing();
+}
+`;
+    const findings = detectPlausibleButWrong(unit(code)).filter((f) =>
+      /unreachable/.test(f.evidence),
+    );
+    expect(findings.length).toBe(1);
+    expect(findings[0].evidence).toMatch(/after return/);
+  });
+
+  // v0.6.0 fix-unreachable-after-hoisted-decl: a hoisted declaration sitting
+  // between the terminator and the truly-dead statement made the scan give up
+  // early, so genuinely unreachable code went unflagged (silent false negative).
+  it("flags unreachable code that follows a hoisted declaration after a terminator", () => {
+    const code = `
+function f() {
+  return 1;
+  function helper() { return 2; }
+  runDeadCode();
+}
+`;
+    const findings = detectPlausibleButWrong(unit(code)).filter((f) =>
+      /unreachable/.test(f.evidence),
+    );
+    expect(findings.length).toBe(1);
+    expect(findings[0].evidence).toMatch(/after return/);
+    // the finding points at the real dead statement, not the hoisted decl
+    expect(findings[0].line).toBe(5);
+  });
+
+  it("does not flag when only hoisted declarations follow a terminator", () => {
+    const code = `
+function h() {
+  return 1;
+  function stillHoisted() { return 2; }
+}
+`;
+    const findings = detectPlausibleButWrong(unit(code)).filter((f) =>
+      /unreachable/.test(f.evidence),
+    );
+    expect(findings).toEqual([]);
+  });
 });
 
 describe("detectDeadParameter", () => {

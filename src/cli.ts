@@ -134,7 +134,7 @@ async function runAudit(rootArg: string, opts: RunOptions): Promise<void> {
     // the packaged Action renders inline per-line slop annotations on the PR
     // diff. Pure formatter over the same score; the gate still applies (after
     // the annotations are written) exactly like --json.
-    const annotations = renderGithubAnnotations(score);
+    const annotations = renderGithubAnnotations(score, process.cwd());
     if (annotations.length > 0) {
       process.stdout.write(annotations + "\n");
     }

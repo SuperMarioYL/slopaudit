@@ -48,4 +48,26 @@ describe("renderGithubAnnotations (m7)", () => {
     const score = scoreOf([]);
     expect(renderGithubAnnotations(score)).toBe("");
   });
+
+  // v0.6.0 fix-github-annotation-absolute-path: GitHub only attaches an inline
+  // annotation to a PR diff line when `file` is RELATIVE to the workspace root.
+  // The scanner records absolute paths, so emitting them verbatim left every
+  // annotation unmatched and silently absent from the diff.
+  it("emits a workspace-relative POSIX path, not the absolute finding path", () => {
+    const cwd = "/home/runner/work/repo/repo";
+    const score = scoreOf([
+      {
+        file: `${cwd}/src/services/Thing.ts`,
+        line: 12,
+        category: "over_abstraction",
+        weight: 0.6,
+        evidence: "needless layer",
+      },
+    ]);
+    const out = renderGithubAnnotations(score, cwd);
+    // relative to the workspace, with no leading slash and no absolute prefix
+    expect(out).toContain("file=src/services/Thing.ts,line=12");
+    expect(out).not.toContain(cwd);
+    expect(out).not.toContain("file=/");
+  });
 });

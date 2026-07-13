@@ -12,6 +12,7 @@
  */
 import { spawnSync } from "node:child_process";
 import { appendFileSync } from "node:fs";
+import { relative, sep } from "node:path";
 
 const path = process.env.SLOPAUDIT_PATH && process.env.SLOPAUDIT_PATH.length > 0
   ? process.env.SLOPAUDIT_PATH
@@ -74,13 +75,22 @@ function emitAnnotations(scoreObj) {
   if (!scoreObj || !Array.isArray(scoreObj.findings)) return;
   for (const f of scoreObj.findings) {
     if (!f || typeof f.file !== "string" || typeof f.line !== "number") continue;
-    const file = escapeProp(f.file);
+    // GitHub attaches the annotation to a diff line only when `file` is relative
+    // to the workspace root; the CLI reports absolute paths, so relativize
+    // against cwd (= $GITHUB_WORKSPACE) and normalize to POSIX separators.
+    const file = escapeProp(toWorkspacePath(f.file));
     const title = escapeProp("SlopAudit: " + String(f.category ?? "slop"));
     const message = escapeData(`${f.category ?? "slop"} — ${f.evidence ?? ""}`);
     process.stdout.write(
       `::warning file=${file},line=${f.line},title=${title}::${message}\n`,
     );
   }
+}
+
+function toWorkspacePath(file) {
+  const rel = relative(process.cwd(), file);
+  const chosen = rel.length > 0 && !rel.startsWith("..") ? rel : file;
+  return chosen.split(sep).join("/");
 }
 
 function escapeData(s) {
