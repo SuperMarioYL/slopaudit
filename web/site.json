@@ -6,14 +6,14 @@
   "lang": { "primary": "zh", "toggle": true },
   "accent": ["#e05d44", "#f0916a", "#a3341f"],
   "hero": {
-    "eyebrow": { "zh": "零配置 · 离线 · 确定性", "en": "Zero-config · Offline · Deterministic" },
+    "eyebrow": { "zh": "零配置 · 离线 · 每次结果一致", "en": "Zero-config · Offline · Same result every run" },
     "headline": {
-      "zh": "给 agent 留下的 AI 代码债\n打一个确定的分数",
-      "en": "Score the AI slop\nyour agents left behind"
+      "zh": "AI 写了一半你的代码，现在你维护它\n一个分数 + 一张热力图，看清债有多重、藏在哪",
+      "en": "Your AI agents wrote half your code. Now you maintain it.\nOne score + one heatmap — see how bad, and where."
     },
     "sub": {
-      "zh": "五个纯 AST 检测器把你的 JS/TS 仓库压成一个确定的 SlopScore(0–100)和按文件排序的热力图 —— 全程静态、离线、不调用任何大模型。",
-      "en": "Five pure AST detectors turn your JS/TS repo into one deterministic SlopScore (0–100) and a ranked per-file heatmap — fully static, offline, no LLM calls."
+      "zh": "过得了 lint、编译也没错的代码，也可能是 AI 塞给你的债。一条命令扫整个仓库，给你一个 0–100 的分数和一张按文件排序的热力图——债有多重、藏在哪几个文件，一眼看到。不用装、不联网、不用 API key。",
+      "en": "Code that passes lint and compiles can still be AI-generated debt you'll be untangling. One command scans your whole repo and returns a 0–100 score plus a ranked per-file heatmap — how bad it is, and which files. No install, no network, no API key."
     },
     "command": "npx slopaudit .",
     "cta": { "zh": "开始使用", "en": "Get started" },
@@ -21,47 +21,47 @@
   },
   "advantages": [
     {
-      "title": { "zh": "一个分数,精确到每个文件", "en": "One score, down to every file" },
+      "title": { "zh": "先知道有多烂，再知道烂在哪", "en": "Know how bad. Then know where." },
       "body": {
-        "zh": "五个纯函数检测器给出加权 slop 密度,归一化成 0–100 的 SlopScore,分 clean(<34)/moderate(34–66)/heavy(>66) 三档,再列出最脏文件的排序热力图。每条发现都带可读证据(如“4 层包装、单一调用者”),是可核对的分诊工具,不是黑盒结论。",
-        "en": "Five pure-function detectors produce a weighted slop density, normalized into a 0–100 SlopScore banded clean (<34) / moderate (34–66) / heavy (>66), plus a ranked heatmap of the worst files. Every finding carries human-readable evidence (e.g. \"4-deep wrapper, single caller\") — a triage instrument you can verify, not a black-box verdict."
+        "zh": "一个 0–100 的分数量化整个仓库的 AI 代码债；一张按文件排序的热力图直接指向最该清理的几个文件。每条发现都带可读证据（比如「4 层包装、只有一个调用者」），是你能核对的分诊单，不是黑盒结论。",
+        "en": "A 0–100 score sizes up the AI debt across your whole repo; a ranked heatmap points straight at the files most worth cleaning. Every finding comes with plain-language evidence (e.g. \"4-deep wrapper, only one caller\") — a triage sheet you can verify, not a black-box verdict."
       },
       "chips": [
-        "› SlopScore 0–100",
-        "› clean · moderate · heavy"
+        "› 0–100 分数",
+        "› 按文件排序热力图"
       ]
     },
     {
-      "title": { "zh": "检测 agent 特有的模式,而非代码风格", "en": "Catches agent-specific patterns, not style" },
+      "title": { "zh": "抓的是 AI 特有的乱，不是代码风格", "en": "Catches the mess AI leaves, not your style" },
       "body": {
-        "zh": "over_abstraction、generic_boilerplate、plausible_but_wrong、dead_parameter、copy_paste_clone —— 五类 agent 高产的模式:多层单调用者包装、复制粘贴脚手架、吞掉异常的空 catch、从没被读到的参数、被轻改过的近似重复块。这些都是过得了 ESLint、编译也没错,却要人来还的债。",
-        "en": "over_abstraction, generic_boilerplate, plausible_but_wrong, dead_parameter and copy_paste_clone — five patterns agents over-produce: deep single-caller wrappers, copy-paste scaffolds, empty catches that swallow errors, parameters that are never read, and near-duplicate blocks that were lightly edited. Lint-clean slop that passes ESLint and compiles fine, but a human still has to untangle."
+        "zh": "多层套娃却只有一个调用者的包装、复制粘贴的脚手架、吞掉异常的空 catch、加进来却从没被读到的参数、轻改一下的近似重复块——这些都是过得了 ESLint、编译也通过的代码，但要你来解的结。不是风格、不是 bug，是 AI 高产的那种债。",
+        "en": "Deep wrapper chains with a single caller, copy-pasted scaffolds, empty catches that swallow errors, parameters added but never read, near-duplicate blocks lightly edited — all lint-clean, all compiles, yet knots only a human can untangle. Not style, not bugs: the specific debt AI over-produces."
       },
       "chips": [
-        "› 5 个纯 AST 检测器",
-        "› 各自独立单测"
+        "› 过得了 ESLint 的债",
+        "› 只抓 AI 高产的乱"
       ]
     },
     {
-      "title": { "zh": "一行命令,在 PR 上设卡", "en": "Gate a PR in one line" },
+      "title": { "zh": "一行命令卡住 PR，不让债继续涨", "en": "Gate a PR in one line — stop the debt growing" },
       "body": {
-        "zh": "--fail-on <clean|moderate|heavy|0–100> 让 SlopScore 一超阈值就退出非零,一步卡住 PR,不需要服务、不需要账号。打包成 GitHub Action 后,把档位和最脏文件写进 job summary,并把每条发现作为行内注释落到 PR diff 的对应行上。",
-        "en": "--fail-on <clean|moderate|heavy|0–100> exits non-zero the moment the SlopScore crosses your threshold, blocking a PR in one step — no service, no account. Packaged as a GitHub Action, it writes the band and worst files to the job summary and drops each finding as an inline annotation on the exact line of the PR diff."
+        "zh": "在 CI 里加一行，分数一过你设的门槛就让 job 失败，把烂代码挡在合并之外。不用搭服务、不用开账号。装成 GitHub Action 后，分数和最脏的文件写进 job summary，每条发现还会落到 PR diff 的对应行上——指到具体哪一行该清理。",
+        "en": "Add one line to CI and the job fails the moment the score crosses your threshold, blocking sloppy code from merging — no service, no account. Packaged as a GitHub Action, the score and worst files land in the job summary, and each finding is pinned to the exact line of the PR diff — the line to clean."
       },
       "chips": [
-        "› --fail-on 阈值门",
+        "› 阈值门卡 PR",
         "› 行内 PR 注释"
       ]
     },
     {
-      "title": { "zh": "零配置 · 离线 · 每次一致", "en": "Zero-config, offline, identical every run" },
+      "title": { "zh": "不装、不联网、每次分数都一样", "en": "No install, no network, same score every time" },
       "body": {
-        "zh": "一条 npx slopaudit . 就跑,不用装、不用配。全程纯静态启发式:不调用大模型、不联网、无遥测。同一个仓库每次跑分完全一致,两分钟内产出终端报告、自包含的 HTML 热力图和 SVG 徽章。",
-        "en": "One command — npx slopaudit . — nothing to install or configure. Purely static heuristics: no LLM calls, no network, no telemetry. The same repo scores identically every run, producing a terminal report, a self-contained HTML heatmap and an SVG badge in under two minutes."
+        "zh": "一条 npx slopaudit . 就跑，不用装、不用配。整个扫描在本地完成——你的代码不离开机器、不用 API key、不用账号。同一个仓库每次跑出来的分数完全一致，两分钟内给你终端报告、一张自包含的 HTML 热力图和一个能贴进 README 的徽章。",
+        "en": "One command — npx slopaudit . — nothing to install or configure. The whole scan runs locally — your code never leaves your machine, no API key, no account. The same repo scores identically every run, giving you a terminal report, a self-contained HTML heatmap and a README-ready badge in under two minutes."
       },
       "chips": [
-        "› 无 LLM · 无网络",
-        "› 自包含 HTML + SVG 徽章"
+        "› 本地跑，代码不出门",
+        "› 自包含 HTML + 徽章"
       ]
     }
   ],
@@ -70,19 +70,19 @@
   },
   "cta": {
     "headline": {
-      "zh": "先量化,再清理",
+      "zh": "先量化，再清理",
       "en": "Measure it before you clean it"
     },
     "sub": {
-      "zh": "免费、开源(Apache-2.0)、离线。个人与开源项目永久免费,一条命令即可拿到分数。",
+      "zh": "免费、开源(Apache-2.0)、离线。个人与开源项目永久免费，一条命令拿到分数。",
       "en": "Free, open source (Apache-2.0), offline. Free forever for individuals and OSS — one command to get your score."
     },
     "button": { "zh": "在 GitHub 上开始", "en": "Get started on GitHub" }
   },
   "footer": {
     "tag": {
-      "zh": "给 AI 生成代码打分的零配置 CLI",
-      "en": "The zero-config CLI that scores AI-generated code slop"
+      "zh": "给 AI 写进你仓库的代码债打分",
+      "en": "Score the code debt AI wrote into your repo"
     }
   }
 }
