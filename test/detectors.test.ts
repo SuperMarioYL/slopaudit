@@ -156,6 +156,74 @@ function h() {
     );
     expect(findings).toEqual([]);
   });
+
+  // v0.7.0 fix-nan-check-dead-code-false-positive: constantTest treated
+  // `x !== x` (same identifier both sides) as "always false", flagging the
+  // standard pre-Number.isNaN NaN-check idiom `if (x !== x) {...}` as "branch
+  // is dead code". The branch is NOT dead — it runs when x is NaN. The idiom
+  // must no longer be reported as dead code.
+  it("does not flag the `x !== x` NaN-check idiom as dead code", () => {
+    const code = `
+function classify(x: number): string {
+  if (x !== x) return "NaN";
+  return "num";
+}
+`;
+    const findings = detectPlausibleButWrong(unit(code));
+    expect(
+      findings.some((f) => /always false|dead code|guard condition/.test(f.evidence)),
+    ).toBe(false);
+  });
+
+  it("does not flag the `x === x` same-operand no-op as always-true either", () => {
+    // NaN makes `x === x` NOT always true either; exempting both sides of the
+    // same-operand equality/inequality avoids a symmetric false positive.
+    const code = `
+function isNumber(x: number): boolean {
+  if (x === x) return true;
+  return false;
+}
+`;
+    const findings = detectPlausibleButWrong(unit(code));
+    expect(
+      findings.some((f) => /always true|guard condition/.test(f.evidence)),
+    ).toBe(false);
+  });
+
+  // v0.7.0 fix-unawaited-promise-sync-nested-fn: inAsync used
+  // `ancestors.some(...async)`, so a SYNC function nested inside an async one
+  // was treated as async; a bare call inside the sync helper was flagged "not
+  // awaited inside an async function" though `await` is a syntax error there.
+  // The NEAREST enclosing function now governs async-ness.
+  it("does not flag an unawaited call inside a SYNC function nested in an async function", () => {
+    const code = `
+async function outer() {
+  function syncHelper() {
+    saveItem();
+  }
+  syncHelper();
+}
+`;
+    const findings = detectPlausibleButWrong(unit(code)).filter((f) =>
+      /not awaited|promise but is not awaited/.test(f.evidence),
+    );
+    expect(findings).toEqual([]);
+  });
+
+  it("still flags an unawaited call directly inside an async function", () => {
+    // Regression guard: the fix must not over-suppress the intended direct-in-
+    // async detection. A bare `saveItem()` directly in an async fn is still
+    // flagged.
+    const code = `
+async function outer() {
+  saveItem();
+}
+`;
+    const findings = detectPlausibleButWrong(unit(code)).filter((f) =>
+      /not awaited|promise but is not awaited/.test(f.evidence),
+    );
+    expect(findings.length).toBe(1);
+  });
 });
 
 describe("detectDeadParameter", () => {

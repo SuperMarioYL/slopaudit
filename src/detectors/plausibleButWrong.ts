@@ -50,9 +50,12 @@ export function detectPlausibleButWrong(unit: FileUnit): SlopFinding[] {
 
     // unawaited promise-returning calls inside async fns
     if (node.type === "ExpressionStatement") {
-      const inAsync = ancestors.some(
-        (a) => isFunctionLike(a) && a.async === true,
-      );
+      // fix-unawaited-promise-sync-nested-fn: `await` legality is governed by
+      // the NEAREST enclosing function, not by any async fn further out. A
+      // sync helper nested inside an async fn is still sync (await is a syntax
+      // error there), so a bare call inside it must not be attributed to the
+      // outer async fn.
+      const inAsync = nearestEnclosingFnIsAsync(ancestors);
       if (inAsync) {
         const call = node.expression;
         if (
@@ -265,10 +268,22 @@ function constantTest(test: any): string | null {
   if (test.type === "NumericLiteral") {
     return test.value !== 0 ? "always true" : "always false";
   }
-  // x === x / x !== x  (same identifier both sides)
-  if (test.type === "BinaryExpression" && sameIdentifier(test.left, test.right)) {
-    if (test.operator === "===" || test.operator === "==") return "always true";
-    if (test.operator === "!==" || test.operator === "!=") return "always false";
+  // x === x / x !== x  (same identifier both sides). Neither is truly
+  // constant: for NaN, `x === x` is FALSE and `x !== x` is TRUE — the latter
+  // is the standard pre-`Number.isNaN` NaN-check idiom
+  // (`if (x !== x) { ... }`), and flagging it "always false / dead code" is a
+  // false positive (the branch runs for NaN). fix-nan-check-dead-code-false-positive:
+  // exempt same-identifier === / == / !== / != so the NaN-check idiom is not
+  // reported as dead code.
+  if (
+    test.type === "BinaryExpression" &&
+    sameIdentifier(test.left, test.right) &&
+    (test.operator === "===" ||
+      test.operator === "==" ||
+      test.operator === "!==" ||
+      test.operator === "!=")
+  ) {
+    return null;
   }
   // a && !a  /  a || !a
   if (test.type === "LogicalExpression") {
@@ -308,6 +323,26 @@ function isFunctionLike(node: any): boolean {
     node.type === "ClassMethod" ||
     node.type === "ObjectMethod"
   );
+}
+
+/**
+ * The async-ness that governs whether `await` is legal at a call site belongs
+ * to the NEAREST enclosing function — not to any async function further out.
+ * A sync function nested inside an async function is still sync (await is a
+ * syntax error there), so a bare call inside it must not be mis-attributed to
+ * the outer async fn. Walk the ancestor chain from the nearest (immediate
+ * parent, last element) back to the root and return the `.async` flag of the
+ * first function-like node encountered.
+ *
+ * `ancestors` is the root→parent chain `walkWithStack` passes to the visitor
+ * (the node itself is not yet pushed when the visitor runs).
+ */
+function nearestEnclosingFnIsAsync(ancestors: any[]): boolean {
+  for (let i = ancestors.length - 1; i >= 0; i--) {
+    const a = ancestors[i];
+    if (isFunctionLike(a)) return a.async === true;
+  }
+  return false;
 }
 
 function lineOf(node: any): number {

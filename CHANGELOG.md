@@ -11,6 +11,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Hosted team tier: SlopScore *history* across org repos, delta-vs-main gating, leadership dashboard.
 - Additional language detectors (Python / Go / Rust) behind the existing pure-function detector seam.
 
+## [0.7.0] - 2026-07-23
+
+Correctness / false-positive release. Four revert-verified fixes from a source
+audit of the shipped v0.6.0 detectors, the packaged Action, and the license
+file — no new detector, ecosystem, or CLI surface. Each fix is guarded by a
+regression test that fails on the reverted hunk (bug/false-positive returns)
+and passes once the fix is restored.
+
+### Fixed
+- **The packaged Action runs the current CLI, not a hardcoded
+  `slopaudit@0.3.0`.** The composite Action's `version` input defaulted to
+  `"0.3.0"` (`action.yml`), so `SLOPAUDIT_VERSION` was always non-empty and the
+  entrypoint's own `|| "latest"` fallback never fired — the v0.6.0 Action
+  silently ran `npx slopaudit@0.3.0`, missing the `copy_paste_clone` detector
+  (v0.4.0) and every correctness fix shipped v0.4.0–v0.6.0, including the
+  unreachable-after-hoisted-decl fix that is this release's headline. The input
+  default is now `"latest"` so the entrypoint resolves to the current CLI when
+  no version is pinned. (`action.yml`, `scripts/action-entrypoint.mjs`)
+- **The Action no longer reports a pristine 0/100 (clean) summary + outputs for
+  an empty/failed scan.** The `writeStepSummary` guard only caught the no-JSON
+  case, but the CLI's empty-scan path emits a valid
+  `{"score":0,"band":"clean","filesScanned":0}` JSON to stdout and then exits 2,
+  so the Action parsed a real score and wrote a "🟢 SlopScore: 0/100 (clean)"
+  headline to `$GITHUB_STEP_SUMMARY` plus `score=0`/`band=clean` step outputs
+  while the job failed — the exact false-clean the v0.3.0 empty-scan fix
+  removed, relocated to the Action layer. `writeStepSummary` and `setOutputs`
+  now treat an empty scan (`filesScanned === 0` or exit 2) as "nothing audited"
+  and emit the no-score message / empty outputs instead.
+  (`scripts/action-entrypoint.mjs`)
+- **The `x !== x` NaN-check idiom is no longer flagged as dead code.**
+  `constantTest` treated any `BinaryExpression` with the same identifier on
+  both sides as constant, so `if (x !== x) { ... }` — the standard
+  pre-`Number.isNaN` NaN-detection idiom — was reported "guard condition is
+  always false — branch is dead code". The branch is NOT dead: it runs when `x`
+  is NaN. Same-operand `===`/`==`/`!==`/`!=` are now exempt (NaN makes none of
+  them truly constant), so the idiom is no longer reported as dead code.
+  (`src/detectors/plausibleButWrong.ts`)
+- **Unawaited calls inside a SYNC function nested in an async function are no
+  longer mis-flagged.** `inAsync` used `ancestors.some(... .async)`, so a sync
+  function nested inside an async one was treated as async; a bare call inside
+  the sync helper was flagged "returns a promise but is not awaited inside an
+  async function" though `await` is a syntax error there — the finding's implied
+  remedy was impossible. The nearest enclosing function now governs async-ness
+  (a sync function inside an async one is not async), so calls in sync nested
+  functions are no longer mis-attributed to an outer async function.
+  (`src/detectors/plausibleButWrong.ts`)
+
+### Changed
+- Filled the Apache-2.0 LICENSE copyright placeholder
+  (`Copyright 2026 SuperMarioYL`) and confirmed the README license prose is
+  Apache-2.0 end-to-end (badge, footer, copy).
+
 ## [0.6.0] - 2026-07-14
 
 Correctness release. Two false-negative fixes from a source audit of the shipped

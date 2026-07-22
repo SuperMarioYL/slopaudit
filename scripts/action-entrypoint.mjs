@@ -9,58 +9,115 @@
  *
  * No new runtime dependency in the CLI: this is an Action asset, not part of
  * src/. It shells out to `npx slopaudit` exactly as a consumer would.
+ *
+ * The pure helpers (resolveVersion / isEmptyScan / writeStepSummary /
+ * setOutputs) are exported so vitest can pin them down without spawning npx;
+ * the runnable side is wrapped in `main()` and only fires when this file is the
+ * process entry point (so importing it for tests does NOT launch the CLI).
  */
 import { spawnSync } from "node:child_process";
 import { appendFileSync } from "node:fs";
 import { relative, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const path = process.env.SLOPAUDIT_PATH && process.env.SLOPAUDIT_PATH.length > 0
-  ? process.env.SLOPAUDIT_PATH
-  : ".";
-const failOn = (process.env.SLOPAUDIT_FAIL_ON ?? "").trim();
-const version = (process.env.SLOPAUDIT_VERSION ?? "").trim() || "latest";
-
-const args = [
-  "--yes",
-  `slopaudit@${version}`,
-  path,
-  "--json",
-  "--no-html",
-  "--no-badge",
-];
-if (failOn.length > 0) {
-  args.push("--fail-on", failOn);
+/**
+ * fix-action-stale-cli-version-default: the entrypoint's own `|| "latest"`
+ * fallback is defeated when action.yml sets `inputs.version.default` to a
+ * pinned literal (it used to ship "0.3.0"), because then SLOPAUDIT_VERSION is
+ * always non-empty. Resolve the version from the env with the same fallback so
+ * a missing/blank input resolves to the current CLI. Pure + exported for tests.
+ */
+export function resolveVersion(env = process.env) {
+  const v = (env?.SLOPAUDIT_VERSION ?? "").trim();
+  return v.length > 0 ? v : "latest";
 }
 
-// stdout is captured (the JSON report); stderr streams straight to the log.
-const result = spawnSync("npx", args, {
-  encoding: "utf8",
-  stdio: ["ignore", "pipe", "inherit"],
-});
-
-if (result.error) {
-  console.error(`slopaudit-action: failed to launch slopaudit: ${result.error.message}`);
-  process.exit(1);
+/**
+ * fix-action-empty-scan-false-clean: the CLI's empty-scan path emits a VALID
+ * `{"score":0,"band":"clean","filesScanned":0,...}` JSON to stdout and THEN
+ * exits 2 (it found no JS/TS files). The previous guard only caught the
+ * no-JSON case, so this real-but-empty score reached `writeStepSummary`/
+ * `setOutputs` and produced a false "🟢 SlopScore: 0/100 (clean)" headline plus
+ * `score=0`/`band=clean` step outputs while the job failed — the exact
+ * false-clean the v0.3.0 empty-scan fix removed, relocated to the Action layer.
+ * Detect it here so the summary/outputs treat it as "nothing audited".
+ */
+export function isEmptyScan(score) {
+  return (
+    !!score &&
+    typeof score === "object" &&
+    typeof score.filesScanned === "number" &&
+    score.filesScanned === 0
+  );
 }
 
-const stdout = result.stdout ?? "";
-process.stdout.write(stdout);
+export { writeStepSummary, setOutputs, emitAnnotations };
 
-let score = null;
-try {
-  const json = JSON.parse(stdout.trim());
-  if (json && typeof json === "object") score = json;
-} catch {
-  // The CLI may have exited before emitting JSON (e.g. an empty scan exits 2 and
-  // prints a warning to stderr). Fall through with score=null.
+function main() {
+  const path =
+    process.env.SLOPAUDIT_PATH && process.env.SLOPAUDIT_PATH.length > 0
+      ? process.env.SLOPAUDIT_PATH
+      : ".";
+  const failOn = (process.env.SLOPAUDIT_FAIL_ON ?? "").trim();
+  const version = resolveVersion();
+
+  const args = [
+    "--yes",
+    `slopaudit@${version}`,
+    path,
+    "--json",
+    "--no-html",
+    "--no-badge",
+  ];
+  if (failOn.length > 0) {
+    args.push("--fail-on", failOn);
+  }
+
+  // stdout is captured (the JSON report); stderr streams straight to the log.
+  const result = spawnSync("npx", args, {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "inherit"],
+  });
+
+  if (result.error) {
+    console.error(
+      `slopaudit-action: failed to launch slopaudit: ${result.error.message}`,
+    );
+    process.exit(1);
+  }
+
+  const stdout = result.stdout ?? "";
+  process.stdout.write(stdout);
+
+  let score = null;
+  try {
+    const json = JSON.parse(stdout.trim());
+    if (json && typeof json === "object") score = json;
+  } catch {
+    // The CLI may have exited before emitting JSON, OR emitted an empty-scan
+    // score then exited 2 (handled by isEmptyScan downstream). Fall through with
+    // score=null; the empty-scan JSON path is caught by the filesScanned check.
+  }
+
+  writeStepSummary(score, failOn, result.status);
+  setOutputs(score, result.status);
+  emitAnnotations(score);
+
+  // Propagate the CLI exit code (1 = gate tripped, 2 = usage/empty-scan, 0 = pass).
+  process.exit(result.status ?? 0);
 }
 
-writeStepSummary(score, failOn);
-setOutputs(score);
-emitAnnotations(score);
-
-// Propagate the CLI exit code (1 = gate tripped, 2 = usage/empty-scan, 0 = pass).
-process.exit(result.status ?? 0);
+// Only run when invoked directly (not when imported by a test).
+const isMain = (() => {
+  try {
+    const entry = process.argv[1];
+    if (!entry) return false;
+    return fileURLToPath(import.meta.url) === entry;
+  } catch {
+    return false;
+  }
+})();
+if (isMain) main();
 
 // ---------------------------------------------------------------------------
 
@@ -101,7 +158,14 @@ function escapeProp(s) {
   return escapeData(s).replace(/:/g, "%3A").replace(/,/g, "%2C");
 }
 
-function writeStepSummary(score, failOnRaw) {
+/**
+ * Write the SlopScore band + worst offenders to $GITHUB_STEP_SUMMARY. An empty
+ * scan (filesScanned===0) or a non-numeric score is treated as "nothing
+ * audited" so the summary never shows a false 0/100 (clean) badge while the
+ * underlying job fails — fix-action-empty-scan-false-clean. `exitStatus` is the
+ * CLI's propagated exit code (2 = empty/usage) and is honored as a tiebreaker.
+ */
+function writeStepSummary(score, failOnRaw, exitStatus) {
   const summaryPath = process.env.GITHUB_STEP_SUMMARY;
   if (!summaryPath) return; // not running under Actions — nothing to write
 
@@ -109,10 +173,20 @@ function writeStepSummary(score, failOnRaw) {
   lines.push("## SlopAudit");
   lines.push("");
 
-  if (!score || typeof score.score !== "number") {
+  // No real score: either no JSON was parsed, the score field isn't numeric,
+  // or this is an empty scan (valid {score:0,band:"clean",filesScanned:0} JSON
+  // then exit 2). In all three cases surface "nothing audited" instead of a
+  // false clean headline.
+  const nothingAudited =
+    !score ||
+    typeof score.score !== "number" ||
+    isEmptyScan(score) ||
+    exitStatus === 2;
+
+  if (nothingAudited) {
     lines.push(
-      "No SlopScore was produced — the audited path had no JS/TS source files, " +
-        "or the audit failed before scoring. See the job log above.",
+      "⚠ No SlopScore was produced — the audited path had no JS/TS source " +
+        "files, or the audit failed before scoring. See the job log above.",
     );
     appendFileSync(summaryPath, lines.join("\n") + "\n");
     return;
@@ -149,11 +223,25 @@ function writeStepSummary(score, failOnRaw) {
   appendFileSync(summaryPath, lines.join("\n") + "\n");
 }
 
-function setOutputs(score) {
+/**
+ * Expose `score`/`band` as step outputs. Mirror the empty-scan guard from
+ * writeStepSummary so a nothing-audited run does not emit `score=0` /
+ * `band=clean` (downstream steps would read a false pristine score).
+ */
+function setOutputs(score, exitStatus) {
   const outPath = process.env.GITHUB_OUTPUT;
   if (!outPath) return;
-  const scoreVal = score && typeof score.score === "number" ? String(score.score) : "";
-  const bandVal = score && typeof score.band === "string" ? score.band : "";
+  const nothingAudited =
+    !score ||
+    typeof score.score !== "number" ||
+    isEmptyScan(score) ||
+    exitStatus === 2;
+  const scoreVal = nothingAudited ? "" : String(score.score);
+  const bandVal = nothingAudited
+    ? ""
+    : typeof score.band === "string"
+      ? score.band
+      : "";
   appendFileSync(outPath, `score=${scoreVal}\nband=${bandVal}\n`);
 }
 
