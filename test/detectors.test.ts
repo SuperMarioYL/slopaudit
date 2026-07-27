@@ -294,4 +294,44 @@ export function d(used: number) { return arguments.length + 0 * used; }
     expect(findings.some((x) => /"dead"/.test(x.evidence))).toBe(true);
     expect(findings.some((x) => /"a"/.test(x.evidence))).toBe(false);
   });
+
+  // v0.8.0 fix-deadparam-destructured-sibling-default: refRoots only collected a
+  // TOP-LEVEL AssignmentPattern.right, never recursing into an
+  // ObjectPattern/ArrayPattern sibling param, so a plain parameter referenced
+  // ONLY as a nested default inside a destructured sibling was searched against
+  // the body alone and false-flagged dead.
+  it("does not flag a parameter used only in a destructured ObjectPattern sibling's default", () => {
+    // `a` is referenced ONLY as `{ b = a }`'s nested default — it IS used.
+    const code = `export function f(a: number, { b = a }: { b: number }): number { return b; }`;
+    const findings = detectDeadParameter(unit(code));
+    expect(findings.some((x) => /"a"/.test(x.evidence))).toBe(false);
+  });
+
+  it("does not flag a parameter used only in a destructured ArrayPattern sibling's default", () => {
+    const code = `export function f(a: number, [b = a]: number[]): number { return b; }`;
+    const findings = detectDeadParameter(unit(code));
+    expect(findings.some((x) => /"a"/.test(x.evidence))).toBe(false);
+  });
+
+  it("does not flag an option-bag param used only in a sibling's nested default (opts.timeout)", () => {
+    // The exact reasonable option-bag pattern from the finding.
+    const code = `export function init(opts: Opts, { timeout = opts.timeout ?? 5000 }: InitOpts): number { return timeout; }`;
+    const findings = detectDeadParameter(unit(code));
+    expect(findings.some((x) => /"opts"/.test(x.evidence))).toBe(false);
+  });
+
+  it("still flags a genuinely dead parameter alongside a destructured-sibling default", () => {
+    // Regression guard: `a` is used via `{ b = a }`, but `dead` is truly unused.
+    const code = `export function f(a: number, dead: number, { b = a }: { b: number }): number { return b; }`;
+    const findings = detectDeadParameter(unit(code));
+    expect(findings.some((x) => /"a"/.test(x.evidence))).toBe(false);
+    expect(findings.some((x) => /"dead"/.test(x.evidence))).toBe(true);
+  });
+
+  it("does not flag a parameter used in a nested multi-level destructured default", () => {
+    // `a` is referenced two levels deep: `{ outer: { inner = a } }`.
+    const code = `export function f(a: number, { outer: { inner = a } }: any): number { return inner; }`;
+    const findings = detectDeadParameter(unit(code));
+    expect(findings.some((x) => /"a"/.test(x.evidence))).toBe(false);
+  });
 });

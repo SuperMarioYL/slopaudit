@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import {
   resolveVersion,
   isEmptyScan,
+  propagatedExitCode,
   writeStepSummary,
   setOutputs,
 } from "../scripts/action-entrypoint.mjs";
@@ -141,5 +142,94 @@ describe("fix-action-empty-scan-false-clean", () => {
     const out = readFileSync(outputFile, "utf8");
     expect(out).toContain("score=23");
     expect(out).toContain("band=moderate");
+  });
+});
+
+describe("fix-action-invalid-failon-hides-score", () => {
+  // The CLI's invalid-threshold path computes + emits a VALID SlopScore JSON to
+  // stdout (filesScanned > 0, so isEmptyScan is false), THEN applyGate throws
+  // InvalidThresholdError and sets exitCode = 2. The old `exitStatus === 2`
+  // term in nothingAudited conflated this with the empty-scan exit-2 path and
+  // wrote "nothing audited" + blank score=/band=, hiding the real score.
+  const validScoreWithInvalidFailOn = {
+    score: 42,
+    band: "moderate",
+    filesScanned: 12,
+    linesScanned: 480,
+    findings: [
+      {
+        file: "src/x.ts",
+        line: 7,
+        category: "dead_parameter",
+        weight: 0.4,
+        evidence: 'parameter "y" is never used',
+      },
+    ],
+    byFile: { "src/x.ts": 0.55 },
+  };
+
+  it("shows the real SlopScore in the summary when --fail-on is invalid (exitStatus 2, non-empty scan)", () => {
+    writeStepSummary(validScoreWithInvalidFailOn, "bogus", 2);
+    const summary = readFileSync(summaryFile, "utf8");
+    expect(summary).toContain("SlopScore: 42/100 (moderate)");
+    expect(summary).not.toMatch(/nothing audited|no SlopScore was produced/i);
+    expect(summary).toContain("Gate: `--fail-on bogus`");
+  });
+
+  it("exposes score=42 / band=moderate outputs when --fail-on is invalid", () => {
+    setOutputs(validScoreWithInvalidFailOn, 2);
+    const out = readFileSync(outputFile, "utf8");
+    expect(out).toContain("score=42");
+    expect(out).toContain("band=moderate");
+    expect(out).not.toMatch(/score=\n/);
+  });
+
+  it("still treats a true empty scan (filesScanned===0) as nothing-audited even at exitStatus 2", () => {
+    // Regression guard: dropping `exitStatus === 2` must not let a genuine
+    // empty-scan (valid {score:0,band:"clean",filesScanned:0} JSON then exit 2)
+    // leak through as a clean headline — isEmptyScan still catches it.
+    const emptyScanScore = {
+      score: 0,
+      band: "clean",
+      filesScanned: 0,
+      linesScanned: 0,
+      findings: [],
+      byFile: {},
+    };
+    writeStepSummary(emptyScanScore, "", 2);
+    const summary = readFileSync(summaryFile, "utf8");
+    expect(summary).not.toContain("SlopScore: 0/100 (clean)");
+    expect(summary).toMatch(/nothing audited|no SlopScore was produced|no JS\/TS source files/i);
+    setOutputs(emptyScanScore, "", 2);
+    const out = readFileSync(outputFile, "utf8");
+    expect(out).toContain("score=\n");
+    expect(out).not.toContain("score=0");
+  });
+});
+
+describe("fix-action-signal-kill-false-green", () => {
+  // spawnSync returns {status: null, signal: "SIGKILL"} when the npx slopaudit
+  // child is killed by a signal mid-audit (OOM/cancel). The old
+  // `result.status ?? 0` treated that null as exit 0, so the CI gate step PASSED
+  // (false green) despite the audit never completing. propagatedExitCode must
+  // turn a signal-killed child into a non-zero exit.
+  it("exits non-zero when the child was signal-killed (status null)", () => {
+    expect(propagatedExitCode({ status: null, signal: "SIGKILL" })).not.toBe(0);
+    expect(propagatedExitCode({ status: null, signal: "SIGTERM" })).not.toBe(0);
+    expect(propagatedExitCode({ status: null, signal: "SIGINT" })).not.toBe(0);
+  });
+
+  it("still propagates a normal CLI exit code (0 pass / 1 gate / 2 usage)", () => {
+    // The fix must not over-fire: a clean exit code is still propagated as-is.
+    expect(propagatedExitCode({ status: 0, signal: null })).toBe(0);
+    expect(propagatedExitCode({ status: 1, signal: null })).toBe(1);
+    expect(propagatedExitCode({ status: 2, signal: null })).toBe(2);
+  });
+
+  it("fails safe (non-zero) on a null status with no signal rather than passing", () => {
+    // A null status means the child did not exit normally; defaulting to 0 would
+    // be a false green, so the entrypoint must not pass in that case either.
+    expect(propagatedExitCode({ status: null, signal: null })).not.toBe(0);
+    expect(propagatedExitCode({})).not.toBe(0);
   });
 });

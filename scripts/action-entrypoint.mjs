@@ -51,6 +51,23 @@ export function isEmptyScan(score) {
   );
 }
 
+/**
+ * fix-action-signal-kill-false-green: `spawnSync` returns `status: null` (with
+ * `signal` set) when the `npx slopaudit` child is killed by a signal mid-audit
+ * (OOM-killed, cancelled, SIGKILL/SIGTERM/SIGINT). The previous
+ * `result.status ?? 0` treated that null as success, so the CI gate step PASSED
+ * (exit 0) despite the audit never completing — a false green in the headline
+ * gate, the exact failure the tool exists to prevent. Treat a signal-killed
+ * child as a failure while still propagating a normal exit code (1 = gate
+ * tripped, 2 = usage/empty-scan, 0 = pass). `result.error` (launch failure) is
+ * handled by the caller before this runs. Pure + exported so vitest can pin the
+ * exit-code decision without spawning npx.
+ */
+export function propagatedExitCode(result) {
+  if (result && result.signal) return 1;
+  return typeof result?.status === "number" ? result.status : 1;
+}
+
 export { writeStepSummary, setOutputs, emitAnnotations };
 
 function main() {
@@ -103,8 +120,10 @@ function main() {
   setOutputs(score, result.status);
   emitAnnotations(score);
 
-  // Propagate the CLI exit code (1 = gate tripped, 2 = usage/empty-scan, 0 = pass).
-  process.exit(result.status ?? 0);
+  // Propagate the CLI exit code (1 = gate tripped, 2 = usage/empty-scan, 0 =
+  // pass); a signal-killed child (status null, signal set) fails the job via
+  // propagatedExitCode instead of a false green (fix-action-signal-kill-false-green).
+  process.exit(propagatedExitCode(result));
 }
 
 // Only run when invoked directly (not when imported by a test).
@@ -163,7 +182,11 @@ function escapeProp(s) {
  * scan (filesScanned===0) or a non-numeric score is treated as "nothing
  * audited" so the summary never shows a false 0/100 (clean) badge while the
  * underlying job fails — fix-action-empty-scan-false-clean. `exitStatus` is the
- * CLI's propagated exit code (2 = empty/usage) and is honored as a tiebreaker.
+ * CLI's propagated exit code; it is kept as a parameter for the caller but is
+ * NOT folded into the nothing-audited guard (see fix-action-invalid-failon-
+ * hides-score): an invalid `--fail-on` makes the CLI emit a VALID SlopScore JSON
+ * then exit 2, and `exitStatus === 2` would wrongly hide that real score. The
+ * empty-scan exit-2 path is already covered by `isEmptyScan(score)`.
  */
 function writeStepSummary(score, failOnRaw, exitStatus) {
   const summaryPath = process.env.GITHUB_STEP_SUMMARY;
@@ -175,13 +198,13 @@ function writeStepSummary(score, failOnRaw, exitStatus) {
 
   // No real score: either no JSON was parsed, the score field isn't numeric,
   // or this is an empty scan (valid {score:0,band:"clean",filesScanned:0} JSON
-  // then exit 2). In all three cases surface "nothing audited" instead of a
-  // false clean headline.
+  // then exit 2 — caught by isEmptyScan). In all cases surface "nothing
+  // audited" instead of a false clean headline. NB: a non-empty exit-2 run
+  // (invalid --fail-on threshold) carries a VALID score and must NOT be hidden.
   const nothingAudited =
     !score ||
     typeof score.score !== "number" ||
-    isEmptyScan(score) ||
-    exitStatus === 2;
+    isEmptyScan(score);
 
   if (nothingAudited) {
     lines.push(
@@ -231,11 +254,13 @@ function writeStepSummary(score, failOnRaw, exitStatus) {
 function setOutputs(score, exitStatus) {
   const outPath = process.env.GITHUB_OUTPUT;
   if (!outPath) return;
+  // exitStatus is NOT folded in (fix-action-invalid-failon-hides-score): an
+  // invalid --fail-on emits a VALID score then exits 2, and exitStatus===2
+  // would wrongly blank the outputs; isEmptyScan covers the empty-scan exit-2.
   const nothingAudited =
     !score ||
     typeof score.score !== "number" ||
-    isEmptyScan(score) ||
-    exitStatus === 2;
+    isEmptyScan(score);
   const scoreVal = nothingAudited ? "" : String(score.score);
   const bandVal = nothingAudited
     ? ""

@@ -46,10 +46,19 @@ export function detectDeadParameter(unit: FileUnit): SlopFinding[] {
     // those signature-only uses as dead parameters. We add ONLY the default-value
     // (`.right`) and type-annotation positions — never a parameter's own binding
     // identifier — so a bare binding is not mistaken for a reference to itself.
+    //
+    // v0.8.0 fix-deadparam-destructured-sibling-default: a default can also sit
+    // NESTED inside a destructured sibling param (`f(a, { b = a })`,
+    // `f(a, [b = a])`, `init(opts, { timeout = opts.timeout ?? 5000 })`); the
+    // top-level `AssignmentPattern.right` push below does not see those, so a
+    // plain parameter referenced ONLY as such a nested default was searched
+    // against the body alone and false-flagged dead. Recurse into each param and
+    // collect every nested `AssignmentPattern.right` so those references count.
     const refRoots: any[] = [body];
     for (const q of node.params ?? []) {
       if (q && q.type === "AssignmentPattern" && q.right) refRoots.push(q.right);
       if (q && q.typeAnnotation) refRoots.push(q.typeAnnotation);
+      for (const def of collectNestedDefaults(q)) refRoots.push(def);
     }
     if (node.returnType) refRoots.push(node.returnType);
     const isUsed = (name: string): boolean =>
@@ -101,6 +110,52 @@ function paramIdentifier(p: any): any | null {
   // `{a}`, `[a]`, `...rest`, `this: T` annotated as TSParameterProperty etc. are
   // deliberately not flagged (destructuring/rest usage is too easy to misread).
   return null;
+}
+
+/**
+ * Recursively collect every default-initializer expression (the `.right` of a
+ * nested `AssignmentPattern`) reachable inside a destructuring pattern param, so
+ * a plain parameter referenced ONLY as such a nested default —
+ * `f(a, { b = a })`, `f(a, [b = a])`, `init(opts, { timeout = opts.timeout })` —
+ * is counted as used and not false-flagged dead. Returns ONLY the `.right`
+ * expressions (never the binding identifiers), mirroring how the top-level
+ * `AssignmentPattern` case adds `q.right` to `refRoots`; a param's own binding
+ * is therefore still never mistaken for a reference to itself.
+ */
+function collectNestedDefaults(pattern: any): any[] {
+  const out: any[] = [];
+  function rec(node: any): void {
+    if (!node) return;
+    if (node.type === "AssignmentPattern") {
+      if (node.right) out.push(node.right);
+      rec(node.left); // the bound pattern may itself hold further nested defaults
+      return;
+    }
+    if (node.type === "ObjectPattern") {
+      for (const prop of node.properties ?? []) {
+        if (!prop) continue;
+        // `{ key: <pattern> }` — the value holds the binding/default; shorthand
+        // `{ x = d }` is ObjectProperty{shorthand:true, value: AssignmentPattern}.
+        if (prop.type === "ObjectProperty" || prop.type === "Property") {
+          rec(prop.value);
+        } else {
+          rec(prop); // e.g. a nested RestElement
+        }
+      }
+      return;
+    }
+    if (node.type === "ArrayPattern") {
+      for (const el of node.elements ?? []) rec(el); // sparse holes are null
+      return;
+    }
+    if (node.type === "RestElement") {
+      rec(node.argument);
+      return;
+    }
+    // A bare Identifier binding (the common leaf) yields no default — stop.
+  }
+  rec(pattern);
+  return out;
 }
 
 /**
