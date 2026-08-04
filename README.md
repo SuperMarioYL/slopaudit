@@ -117,7 +117,7 @@ Open `slopaudit-report.html` in any browser — it's fully self-contained (inlin
 npx slopaudit .
       │
       ▼
- scan/walk.ts     fast-glob the repo for *.{js,jsx,ts,tsx},
+ scan/walk.ts     fast-glob the repo for *.{js,jsx,ts,tsx,mjs,cjs,mts,cts},
                   skipping node_modules / dist / build / vendor / .git
       │
       ▼

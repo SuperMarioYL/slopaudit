@@ -11,6 +11,99 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Hosted team tier: SlopScore *history* across org repos, delta-vs-main gating, leadership dashboard.
 - Additional language detectors (Python / Go / Rust) behind the existing pure-function detector seam.
 
+## [0.9.0] - 2026-08-04
+
+Scan-coverage / false-green release. One verified high-severity fix from a
+source audit of the shipped v0.8.0 walker — no new detector, ecosystem, or
+CLI surface, and no new runtime dependency. The fix is guarded by a regression
+test that fails on the old 4-extension glob and passes once the walker globs
+`.mjs`/`.cjs`/`.mts`/`.cts` too.
+
+### Fixed
+- **`.mjs`/`.cjs`/`.mts`/`.cts` files are no longer silently dropped from the
+  SlopScore** (`src/scan/walk.ts`). `walk()` globed only
+  `**/*.{js,jsx,ts,tsx}`, so `.mjs`, `.cjs`, `.mts` and `.cts` files — real
+  JS/TS source (Node ESM/CJS modules, TS `.mts`/`.cts` variants) that modern
+  repos increasingly use for config (`vite.config.mjs`, `next.config.mjs`)
+  and package entry points — were never returned and silently dropped from the
+  audit. Because the dropped files never produced `SlopFinding`s,
+  `aggregate()` computed a falsely-low SlopScore (and `filesScanned` /
+  `linesScanned` under-count), so a repo whose only slop lived in a
+  `.mjs`/`.cjs` file scored 0/100 (clean) and PASSED
+  `--fail-on clean|moderate|heavy` — a false green in the headline CI gate,
+  the same defect class as the v0.3.0 `fix-empty-scan-silent-pass`. The
+  fast-glob pattern is now `**/*.{js,jsx,ts,tsx,mjs,cjs,mts,cts}`. No parser
+  change was needed: `.mts`/`.cts` parse with the existing `typescript`
+  plugin and `.mjs`/`.cjs` with `sourceType:"module"` +
+  `allowReturnOutsideFunction` already set in `parseFile`. Guarded by a
+  regression test writing `config.mjs` / `build.cjs` / `types.mts` and
+  asserting they appear in `walk()`'s output.
+  (`src/scan/walk.ts`)
+
+### Changed
+- `package.json` version → `0.9.0` (catching up the v0.8.0 ship, which left
+  the manifest at `0.7.0` alongside the unshipped v0.8.0 site-provenance bump).
+- Bumped the GitHub Pages marketing surface (`web/site.json` via the
+  web-factory@v1.1 locale renderer) content provenance from `v0.7.0` straight
+  to `v0.9.0` — catching up the v0.8.0 `launch_post_changes` milestone that
+  never shipped (the v0.8.0 ship commit touched only
+  `scripts/action-entrypoint.mjs`, `src/detectors/deadParameter.ts`, and
+  tests; `web/site.json` `meta.content_version` was still `v0.7.0`). This
+  release-notes copy now surfaces BOTH the three v0.8.0 correctness fixes
+  (the dead-parameter destructured-sibling-default false positive, the Action
+  hiding a valid SlopScore on an invalid `--fail-on`, and the Action
+  false-green on a signal-killed child) AND this v0.9.0 scan-coverage fix.
+
+## [0.8.0] - 2026-07-28
+
+Correctness release. Three revert-verified fixes from a source audit of the
+shipped v0.7.0 `dead_parameter` detector and the packaged Action's entrypoint
+— no new detector, ecosystem, or CLI surface. Each fix is guarded by a
+regression test that fails on the reverted hunk and passes once the fix is
+restored. (The v0.8.0 `launch_post_changes` — bumping the GitHub Pages
+marketing-surface provenance to v0.8.0 and surfacing these fixes in the
+release-notes copy — did not ship at the time; v0.9.0 catches it up, and this
+entry records the three fixes that did ship in code.)
+
+### Fixed
+- **`dead_parameter` no longer false-flags a parameter used only in a
+  destructured sibling's nested default** (`src/detectors/deadParameter.ts`).
+  `refRoots` was built from the body plus, per param, only a top-level
+  `AssignmentPattern.right` and `q.typeAnnotation`; it never recursed into
+  an `ObjectPattern`/`ArrayPattern` sibling param, so a plain parameter
+  referenced ONLY as a nested default inside a destructured sibling was
+  searched against the body alone and false-flagged dead — e.g.
+  `function init(opts, { timeout = opts.timeout ?? 5000 })` (and
+  `function f(a, { b = a })` / `function f(a, [b = a])` likewise) reported
+  "parameter opts is never used" even though `opts` IS used in the sibling's
+  default. `refRoots` now also descends into `ObjectPattern`/`ArrayPattern`
+  params and collects every nested `AssignmentPattern.right` recursively, so
+  references inside a destructured sibling's default count as a use.
+  (`src/detectors/deadParameter.ts`)
+- **The Action no longer hides a valid SlopScore when `--fail-on` is an
+  invalid threshold** (`scripts/action-entrypoint.mjs`). The CLI's
+  invalid-threshold path computes and emits a VALID SlopScore JSON to stdout,
+  then `applyGate` throws `InvalidThresholdError` and sets `exitCode = 2`; the
+  `nothingAudited` guard's `exitStatus === 2` term wrongly fired on that path
+  (even though `isEmptyScan(score)` is false — `filesScanned > 0`), so the
+  Action wrote "⚠ No SlopScore was produced … nothing audited" to
+  `$GITHUB_STEP_SUMMARY` and emitted empty `score=`/`band=` outputs — hiding
+  the real score the user needs to see. The redundant `exitStatus === 2` term
+  is dropped from both `nothingAudited` conditions (`isEmptyScan` already
+  fully covers the empty-scan exit-2 path), so an invalid `--fail-on` now
+  shows the real score in the summary/outputs while the job still fails
+  (exit 2 propagated). (`scripts/action-entrypoint.mjs`)
+- **The Action no longer exits 0 (pass) when the slopaudit CLI/npx child is
+  killed by a signal** (`scripts/action-entrypoint.mjs`).
+  `process.exit(result.status ?? 0)` treated a null `result.status` as
+  success, but `spawnSync` returns `status: null` (with `signal` set)
+  precisely when the child is terminated by a signal (OOM-kill / SIGTERM /
+  SIGINT cancellation) rather than exiting normally. On that path the
+  entrypoint propagated `0`, so the CI gate step PASSED (exit 0) despite the
+  audit never completing — a false green in the headline gate. A
+  signal-killed child is now treated as a failure, so a killed run fails the
+  job instead of silently passing. (`scripts/action-entrypoint.mjs`)
+
 ## [0.7.0] - 2026-07-23
 
 Correctness / false-positive release. Four revert-verified fixes from a source
@@ -176,7 +269,10 @@ deterministic.
 - **m3 — shareable report:** `report/terminal.ts` (chalk headline + ranked top-10 offender files), `report/html.ts` (self-contained `slopaudit-report.html` heatmap, sortable, no external assets), and `report/badge.ts` (shields-style `slopaudit-badge.svg` colored by band).
 - CLI flags: `--list`, `--json`, `--no-html`, `--no-badge`, `--version`, `--help`.
 
-[Unreleased]: https://github.com/SuperMarioYL/slopaudit/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/SuperMarioYL/slopaudit/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/SuperMarioYL/slopaudit/compare/v0.8.0...v0.9.0
+[0.8.0]: https://github.com/SuperMarioYL/slopaudit/compare/v0.7.0...v0.8.0
+[0.7.0]: https://github.com/SuperMarioYL/slopaudit/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/SuperMarioYL/slopaudit/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/SuperMarioYL/slopaudit/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/SuperMarioYL/slopaudit/compare/v0.3.0...v0.4.0

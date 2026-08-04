@@ -117,7 +117,7 @@ Wrote slopaudit-report.html, slopaudit-badge.svg
 npx slopaudit .
       │
       ▼
- scan/walk.ts     用 fast-glob 扫出仓库里的 *.{js,jsx,ts,tsx}，
+ scan/walk.ts     用 fast-glob 扫出仓库里的 *.{js,jsx,ts,tsx,mjs,cjs,mts,cts}，
                   跳过 node_modules / dist / build / vendor / .git
       │
       ▼

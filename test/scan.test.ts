@@ -16,6 +16,12 @@ describe("walk()", () => {
     mkdirSync(path.join(root, "src"), { recursive: true });
     writeFileSync(path.join(root, "src", "comp.jsx"), "export const C = () => null;\n");
     writeFileSync(path.join(root, "src", "util.js"), "module.exports = {};\n");
+    // fix-walk-misses-mjs-cjs-mts-cts-under-audit: ESM/CJS/TS-variant source
+    // files (config / package-entry-point shapes modern repos increasingly use)
+    // that the old 4-extension glob silently dropped — they must now be collected.
+    writeFileSync(path.join(root, "config.mjs"), "export default {};\n");
+    writeFileSync(path.join(root, "build.cjs"), "module.exports = {};\n");
+    writeFileSync(path.join(root, "types.mts"), "export const t = 1;\n");
     // should be skipped: node_modules + dist
     mkdirSync(path.join(root, "node_modules", "pkg"), { recursive: true });
     writeFileSync(path.join(root, "node_modules", "pkg", "index.js"), "module.exports = 0;\n");
@@ -49,10 +55,23 @@ describe("walk()", () => {
     expect(files.some((f) => f.includes(`${path.sep}dist${path.sep}`))).toBe(false);
   });
 
-  it("collects the real .ts/.jsx/.js sources", async () => {
+  it("collects the real .ts/.jsx/.js/.mjs/.cjs/.mts sources", async () => {
     const files = await walk(root);
     const names = files.map((f) => path.basename(f)).sort();
-    expect(names).toEqual(["a.ts", "comp.jsx", "util.js", "z.ts"]);
+    expect(names).toEqual(["a.ts", "build.cjs", "comp.jsx", "config.mjs", "types.mts", "util.js", "z.ts"]);
+  });
+
+  it("collects .mjs/.cjs/.mts config-style files (fix-walk-misses-mjs-cjs-mts-cts-under-audit)", async () => {
+    // The old glob "**/*.{js,jsx,ts,tsx}" silently dropped these ESM/CJS/TS
+    // variants, so a repo whose only slop lived in one scored 0/100 (clean)
+    // and PASSED `--fail-on` — a false green in the headline CI gate (the same
+    // defect class as fix-empty-scan-silent-pass). Fails on the 4-extension
+    // pattern, passes now that walk() globs mjs/cjs/mts/cts too.
+    const files = await walk(root);
+    const names = files.map((f) => path.basename(f));
+    expect(names).toContain("config.mjs");
+    expect(names).toContain("build.cjs");
+    expect(names).toContain("types.mts");
   });
 });
 
