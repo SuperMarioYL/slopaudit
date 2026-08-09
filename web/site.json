@@ -3,10 +3,20 @@
   "name": "slopaudit",
   "github": "https://github.com/SuperMarioYL/slopaudit",
   "host": "slopaudit.lei6393.com",
-  "lang": { "primary": "zh", "toggle": true },
-  "accent": ["#e05d44", "#f0916a", "#a3341f"],
+  "lang": {
+    "primary": "zh",
+    "toggle": true
+  },
+  "accent": [
+    "#e05d44",
+    "#f0916a",
+    "#a3341f"
+  ],
   "hero": {
-    "eyebrow": { "zh": "零配置 · 离线 · 每次结果一致", "en": "Zero-config · Offline · Same result every run" },
+    "eyebrow": {
+      "zh": "零配置 · 离线 · 每次结果一致",
+      "en": "Zero-config · Offline · Same result every run"
+    },
     "headline": {
       "zh": "AI 写了一半你的代码，现在你维护它\n一个分数 + 一张热力图，看清债有多重、藏在哪",
       "en": "Your AI agents wrote half your code. Now you maintain it.\nOne score + one heatmap — see how bad, and where."
@@ -16,12 +26,21 @@
       "en": "Code that passes lint and compiles can still be AI-generated debt you'll be untangling. One command scans your whole repo and returns a 0–100 score plus a ranked per-file heatmap — how bad it is, and which files. No install, no network, no API key."
     },
     "command": "npx slopaudit .",
-    "cta": { "zh": "开始使用", "en": "Get started" },
-    "ctaGithub": { "zh": "在 GitHub 查看", "en": "View on GitHub" }
+    "cta": {
+      "zh": "开始使用",
+      "en": "Get started"
+    },
+    "ctaGithub": {
+      "zh": "在 GitHub 查看",
+      "en": "View on GitHub"
+    }
   },
   "advantages": [
     {
-      "title": { "zh": "先知道有多烂，再知道烂在哪", "en": "Know how bad. Then know where." },
+      "title": {
+        "zh": "先知道有多烂，再知道烂在哪",
+        "en": "Know how bad. Then know where."
+      },
       "body": {
         "zh": "一个 0–100 的分数量化整个仓库的 AI 代码债；一张按文件排序的热力图直接指向最该清理的几个文件。每条发现都带可读证据（比如「4 层包装、只有一个调用者」），是你能核对的分诊单，不是黑盒结论。",
         "en": "A 0–100 score sizes up the AI debt across your whole repo; a ranked heatmap points straight at the files most worth cleaning. Every finding comes with plain-language evidence (e.g. \"4-deep wrapper, only one caller\") — a triage sheet you can verify, not a black-box verdict."
@@ -32,7 +51,10 @@
       ]
     },
     {
-      "title": { "zh": "抓的是 AI 特有的乱，不是代码风格", "en": "Catches the mess AI leaves, not your style" },
+      "title": {
+        "zh": "抓的是 AI 特有的乱，不是代码风格",
+        "en": "Catches the mess AI leaves, not your style"
+      },
       "body": {
         "zh": "多层套娃却只有一个调用者的包装、复制粘贴的脚手架、吞掉异常的空 catch、加进来却从没被读到的参数、轻改一下的近似重复块——这些都是过得了 ESLint、编译也通过的代码，但要你来解的结。不是风格、不是 bug，是 AI 高产的那种债。",
         "en": "Deep wrapper chains with a single caller, copy-pasted scaffolds, empty catches that swallow errors, parameters added but never read, near-duplicate blocks lightly edited — all lint-clean, all compiles, yet knots only a human can untangle. Not style, not bugs: the specific debt AI over-produces."
@@ -43,7 +65,10 @@
       ]
     },
     {
-      "title": { "zh": "一行命令卡住 PR，不让债继续涨", "en": "Gate a PR in one line — stop the debt growing" },
+      "title": {
+        "zh": "一行命令卡住 PR，不让债继续涨",
+        "en": "Gate a PR in one line — stop the debt growing"
+      },
       "body": {
         "zh": "在 CI 里加一行，分数一过你设的门槛就让 job 失败，把烂代码挡在合并之外。不用搭服务、不用开账号。装成 GitHub Action 后，分数和最脏的文件写进 job summary，每条发现还会落到 PR diff 的对应行上——指到具体哪一行该清理。",
         "en": "Add one line to CI and the job fails the moment the score crosses your threshold, blocking sloppy code from merging — no service, no account. Packaged as a GitHub Action, the score and worst files land in the job summary, and each finding is pinned to the exact line of the PR diff — the line to clean."
@@ -54,7 +79,10 @@
       ]
     },
     {
-      "title": { "zh": "不装、不联网、每次分数都一样", "en": "No install, no network, same score every time" },
+      "title": {
+        "zh": "不装、不联网、每次分数都一样",
+        "en": "No install, no network, same score every time"
+      },
       "body": {
         "zh": "一条 npx slopaudit . 就跑，不用装、不用配。整个扫描在本地完成——你的代码不离开机器、不用 API key、不用账号。同一个仓库每次跑出来的分数完全一致，两分钟内给你终端报告、一张自包含的 HTML 热力图和一个能贴进 README 的徽章。",
         "en": "One command — npx slopaudit . — nothing to install or configure. The whole scan runs locally — your code never leaves your machine, no API key, no account. The same repo scores identically every run, giving you a terminal report, a self-contained HTML heatmap and a README-ready badge in under two minutes."
@@ -77,7 +105,10 @@
       "zh": "免费、开源(Apache-2.0)、离线。个人与开源项目永久免费，一条命令拿到分数。",
       "en": "Free, open source (Apache-2.0), offline. Free forever for individuals and OSS — one command to get your score."
     },
-    "button": { "zh": "在 GitHub 上开始", "en": "Get started on GitHub" }
+    "button": {
+      "zh": "在 GitHub 上开始",
+      "en": "Get started on GitHub"
+    }
   },
   "footer": {
     "tag": {
@@ -86,8 +117,8 @@
     }
   },
   "meta": {
-    "content_version": "v0.9.0",
-    "generated_at": "2026-08-04 00:00:00+00:00",
+    "content_version": "v0.10.0",
+    "generated_at": "2026-08-09 18:33:20+00:00",
     "web_factory_ref": "v1.1"
   }
 }

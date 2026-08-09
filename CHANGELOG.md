@@ -11,6 +11,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Hosted team tier: SlopScore *history* across org repos, delta-vs-main gating, leadership dashboard.
 - Additional language detectors (Python / Go / Rust) behind the existing pure-function detector seam.
 
+## [0.10.0] - 2026-08-10
+
+Scan-coverage / score-distortion release. One verified medium-severity fix from a
+source audit of the shipped v0.9.0 walker — no new detector, ecosystem, or CLI
+surface, and no new runtime dependency. The fix is guarded by a regression test
+that fails on the v0.9.0 glob (which collected `.d.mts`/`.d.cts` declaration files)
+and passes once they are excluded.
+
+### Fixed
+- **`.d.mts`/`.d.cts` TypeScript declaration files are no longer scanned as
+  executable source** (`src/scan/walk.ts`). `walk()` globs
+  `**/*.{js,jsx,ts,tsx,mjs,cjs,mts,cts}` and the ignore list excluded only
+  `**/*.d.ts`, so a `.d.mts` or `.d.cts` TypeScript ESM/CJS declaration file —
+  the declaration variant of `.d.ts`, emitted by `tsc` for ESM/CJS package
+  outputs or hand-written for ambient JS interop — matched the `.mts`/`.cts`
+  glob arm and was NOT excluded, so it was parsed and audited as if it were
+  executable source. Declaration files carry no executable code, so scanning
+  them (a) emitted noise false-positive findings on the legitimate JS-interop
+  constructs they contain (e.g. `declare function f(x: any): any` trips the
+  any-heavy-signature detector) that a user cannot fix by editing generated
+  declarations, and (b) inflated `linesScanned` with non-executable declaration
+  lines, diluting the per-100-lines density and dragging the SlopScore down —
+  able to pull a moderate repo below the `--fail-on moderate` (ceiling 34) or
+  `heavy` (ceiling 67) threshold into a false-clean PASS. This is the same
+  score-distortion / false-green defect class as the v0.9.0
+  `.mjs`/`.cjs`/`.mts`/`.cts` fix; that fix added `.mts`/`.cts` to the glob
+  but missed `.d.mts`/`.d.cts` in the ignore list. `.d.mts` and `.d.cts` are
+  now excluded exactly like `.d.ts`. No parser change was needed. Guarded by a
+  regression test writing `api.d.mts` / `api.d.cts` / `api.d.ts` and asserting
+  they do NOT appear in `walk()`'s output (while the real `types.mts` source
+  still does).
+
 ## [0.9.0] - 2026-08-04
 
 Scan-coverage / false-green release. One verified high-severity fix from a

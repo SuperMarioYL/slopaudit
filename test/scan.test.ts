@@ -22,6 +22,13 @@ describe("walk()", () => {
     writeFileSync(path.join(root, "config.mjs"), "export default {};\n");
     writeFileSync(path.join(root, "build.cjs"), "module.exports = {};\n");
     writeFileSync(path.join(root, "types.mts"), "export const t = 1;\n");
+    // fix-walk-scans-d-mts-d-cts-declaration-files: TypeScript ESM/CJS declaration
+    // files (the declaration variant of .d.ts) must be skipped exactly like .d.ts —
+    // they carry no executable code, so scanning them emits noise findings on
+    // legitimate `declare`/`any` JS-interop constructs and dilutes linesScanned.
+    writeFileSync(path.join(root, "api.d.mts"), "export declare function f(x: any): any;\n");
+    writeFileSync(path.join(root, "api.d.cts"), "export declare const c: any;\n");
+    writeFileSync(path.join(root, "api.d.ts"), "export declare function g(x: any): any;\n");
     // should be skipped: node_modules + dist
     mkdirSync(path.join(root, "node_modules", "pkg"), { recursive: true });
     writeFileSync(path.join(root, "node_modules", "pkg", "index.js"), "module.exports = 0;\n");
@@ -71,6 +78,23 @@ describe("walk()", () => {
     const names = files.map((f) => path.basename(f));
     expect(names).toContain("config.mjs");
     expect(names).toContain("build.cjs");
+    expect(names).toContain("types.mts");
+  });
+
+  it("skips .d.mts/.d.cts TypeScript declaration files (fix-walk-scans-d-mts-d-cts-declaration-files)", async () => {
+    // A ".d.mts"/".d.cts" TypeScript ESM/CJS declaration file is the declaration
+    // variant of ".d.ts" — it carries no executable code, so scanning it emits noise
+    // findings on legitimate `declare`/`any` JS-interop constructs and dilutes
+    // linesScanned (able to pull a moderate repo below the --fail-on moderate/heavy
+    // ceiling into a false-clean PASS). It must be skipped exactly like ".d.ts"
+    // (already excluded). Fails when walk() globs .mts/.cts without excluding
+    // .d.mts/.d.cts; passes once they are added to the ignore list next to .d.ts.
+    const files = await walk(root);
+    const names = files.map((f) => path.basename(f));
+    expect(names).not.toContain("api.d.mts");
+    expect(names).not.toContain("api.d.cts");
+    expect(names).not.toContain("api.d.ts");
+    // and the real .mts source IS still collected (the .d exclusion is suffix-specific)
     expect(names).toContain("types.mts");
   });
 });

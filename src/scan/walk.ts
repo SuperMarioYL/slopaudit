@@ -55,6 +55,16 @@ export async function walk(root: string): Promise<string[]> {
       "**/*.min.jsx",
       "**/*.bundle.js",
       "**/*.d.ts",
+      // TypeScript ESM/CJS declaration files — the declaration variant of .d.ts
+      // (emitted by tsc for ESM/CJS package outputs, or hand-written for ambient JS
+      // interop). Excluded for the same reason .d.ts is: they carry no executable
+      // code, so scanning them emits noise findings on legitimate `declare`/`any`
+      // JS-interop constructs and inflates linesScanned, diluting the SlopScore
+      // (able to pull a moderate repo below the --fail-on moderate/heavy ceiling into
+      // a false-clean PASS). fix-walk-scans-d-mts-d-cts-declaration-files: the v0.9.0
+      // .mjs/.cjs/.mts/.cts glob addition missed these in the ignore list.
+      "**/*.d.mts",
+      "**/*.d.cts",
     ],
   });
 
