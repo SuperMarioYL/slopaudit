@@ -25,7 +25,16 @@ export async function walk(root: string): Promise<string[]> {
     cwd,
     absolute: true,
     onlyFiles: true,
-    dot: false,
+    // fix-walk-dotfalse-skips-dotfile-configs: fast-glob's `dot` flag is blunt —
+    // `dot: false` skipped dot-DIRECTORIES but also dot-FILES that are real JS/TS
+    // source config (`.eslintrc.cjs`, `.babelrc.js`, `.swcrc`), silently dropping
+    // them from the audit so a repo whose only slop lived in a dotfile config
+    // scored 0/100 (clean) and PASSED `--fail-on` (a false green in the headline
+    // CI gate). The `ignore` array below already excludes `**/.git/**`,
+    // `**/.next/**`, etc., and fast-glob matches `ignore` regardless of `dot`, so
+    // `.git`/`node_modules` stay excluded. `dot: true` re-includes only real
+    // dotfile source configs.
+    dot: true,
     followSymbolicLinks: false,
     suppressErrors: true,
     ignore: [
@@ -54,6 +63,25 @@ export async function walk(root: string): Promise<string[]> {
       "**/*.min.js",
       "**/*.min.jsx",
       "**/*.bundle.js",
+      // fix-walk-min-mjs-cjs-mts-cts-not-excluded: the v0.9.0 glob addition of
+      // .mjs/.cjs/.mts/.cts introduced minified ESM/CJS/TS-variant bundle variants
+      // (e.g. `lib.min.mjs`, `vendor.min.cjs`, `bundle.min.mts`) that the old
+      // .min.js/.min.jsx/.bundle.js ignore arms did NOT cover, so minified
+      // ESM/CJS bundles committed outside the ignored build dirs were collected
+      // and audited as executable source — emitting noise findings on dense
+      // repeated tokens and inflating linesScanned, diluting the per-100-lines
+      // density and dragging the SlopScore down into a false-clean PASS (the same
+      // score-distortion defect class as the v0.10.0 .d.mts/.d.cts fix). Mirror
+      // the existing .min.js / .bundle.js intent across the ESM/CJS/TS variants.
+      "**/*.min.mjs",
+      "**/*.min.cjs",
+      "**/*.min.mts",
+      "**/*.min.cts",
+      "**/*.bundle.mjs",
+      "**/*.bundle.cjs",
+      "**/*.bundle.ts",
+      "**/*.bundle.mts",
+      "**/*.bundle.cts",
       "**/*.d.ts",
       // TypeScript ESM/CJS declaration files — the declaration variant of .d.ts
       // (emitted by tsc for ESM/CJS package outputs, or hand-written for ambient JS

@@ -11,6 +11,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Hosted team tier: SlopScore *history* across org repos, delta-vs-main gating, leadership dashboard.
 - Additional language detectors (Python / Go / Rust) behind the existing pure-function detector seam.
 
+## [0.11.0] - 2026-08-13
+
+Scan-coverage / score-distortion release. Two verified fixes from a source
+audit of the shipped v0.10.0 walker — no new detector, ecosystem, or CLI
+surface, and no new runtime dependency. Each fix is guarded by a regression
+test that fails on the v0.10.0 walker and passes once the fix is applied.
+
+### Fixed
+- **Dotfile JS/TS config sources like `.eslintrc.cjs`/`.babelrc.js` are no
+  longer silently dropped from the SlopScore** (`src/scan/walk.ts`). `walk()`
+  ran fast-glob with `dot: false`, so dotfiles — including real JS/TS source
+  config files like `.eslintrc.cjs`, `.babelrc.js`, `.swcrc` — never matched the
+  glob and were silently dropped from the audit. The README markets "parses
+  every JS/TS file to an AST" / "One command in any JS/TS repo", so a repo
+  whose only slop lived in a dotfile config (a common shape: an over-abstracted
+  `.eslintrc.cjs` factory) scored 0/100 (clean) and PASSED
+  `--fail-on clean|moderate|heavy` — a false green in the headline CI gate, the
+  same defect class as the v0.9.0 `.mjs`/`.cjs`/`.mts`/`.cts` fix. `dot: false`
+  was set to skip dot-DIRECTORIES, but fast-glob's `dot` flag is blunt: it also
+  skips dot-FILES that are real source. `dot` is now `true`; the existing
+  `ignore` array already excludes `**/.git/**`, `**/.next/**`, etc., and
+  fast-glob matches `ignore` regardless of `dot`, so `.git`/`node_modules` stay
+  excluded and only real dotfile source configs are re-included. No parser
+  change was needed. Guarded by a regression test writing `.eslintrc.cjs`
+  alongside a real `.ts` and asserting the dotfile appears in `walk()`'s
+  output (and `.git`/`node_modules` stay excluded).
+  (`src/scan/walk.ts`, `fix-walk-dotfalse-skips-dotfile-configs`)
+- **`.min.mjs`/`.min.cjs`/`.min.mts`/`.min.cts` and `.bundle.*` minified
+  ESM/CJS/TS-variant bundles are now excluded like `.min.js`**
+  (`src/scan/walk.ts`). The ignore list excluded `**/*.min.js`,
+  `**/*.min.jsx`, and `**/*.bundle.js` but NOT the `.mjs`/`.cjs`/`.mts`/`.cts`
+  variants that the v0.9.0 glob addition (`**/*.{js,jsx,ts,tsx,mjs,cjs,mts,cts}`)
+  introduced. So a minified ESM/CJS/TS-variant bundle committed outside the
+  ignored build dirs (e.g. `lib.min.mjs`, `vendor.min.cjs`, `bundle.min.mts` at
+  the repo root or in a non-ignored dir) WAS collected and audited as
+  executable source. Scanning minified bundles emits noise findings on dense
+  repeated tokens and inflates `linesScanned`, diluting the per-100-lines
+  density and dragging the SlopScore down — able to pull a moderate repo below
+  the `--fail-on moderate` (ceiling 34) or `heavy` (ceiling 67) threshold into a
+  false-clean PASS, the same score-distortion / false-green defect class as the
+  v0.10.0 `.d.mts`/`.d.cts` fix. The ignore array now also excludes
+  `**/*.min.mjs`, `**/*.min.cjs`, `**/*.min.mts`, `**/*.min.cts`,
+  `**/*.bundle.mjs`, `**/*.bundle.cjs`, `**/*.bundle.ts`, `**/*.bundle.mts`,
+  and `**/*.bundle.cts`, mirroring the existing `.min.js` / `.bundle.js`
+  intent across the ESM/CJS/TS variants. No parser change was needed. Guarded
+  by a regression test writing `lib.min.mjs` at the repo root and asserting
+  `walk()` does NOT return it (while a real `.ts` source still is).
+  (`src/scan/walk.ts`, `fix-walk-min-mjs-cjs-mts-cts-not-excluded`)
+
+### Changed
+- Bumped the GitHub Pages marketing surface (`web/site.json` via the
+  web-factory@v1.1 locale renderer) content provenance from `v0.10.0` to
+  `v0.11.0` — the recurring per-release completion step the v0.10.0 amendment
+  performed. This release-notes copy also retracts the now-stale
+  orphan-gh-repo-slopaudit inbox flag (dated Jul 16, pre-v0.7.0, asserting
+  `linked=false`) now that the repo is reconciled to a local v0.10.0+
+  plan+build, and surfaces these two v0.11.0 scan-coverage fixes (dotfile
+  JS/TS config sources no longer silently dropped via `dot: true`;
+  `.min.mjs`/`.min.cjs`/`.min.mts`/`.min.cts` and `.bundle.*` variants now
+  excluded like `.min.js`).
+
 ## [0.10.0] - 2026-08-10
 
 Scan-coverage / score-distortion release. One verified medium-severity fix from a

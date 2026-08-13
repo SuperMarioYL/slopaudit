@@ -97,6 +97,54 @@ describe("walk()", () => {
     // and the real .mts source IS still collected (the .d exclusion is suffix-specific)
     expect(names).toContain("types.mts");
   });
+
+  it("collects dotfile JS/TS config sources like .eslintrc.cjs (fix-walk-dotfalse-skips-dotfile-configs)", async () => {
+    // fast-glob with `dot: false` silently drops dot-FILES (not just dot-dirs),
+    // so a real JS/TS source config file like `.eslintrc.cjs` / `.babelrc.js`
+    // never matched the glob and was dropped from the audit — a repo whose only
+    // slop lived in a dotfile config (a common shape: an over-abstracted
+    // `.eslintrc.cjs` factory) scored 0/100 (clean) and PASSED `--fail-on`
+    // (a false green in the headline CI gate, the same defect class as the
+    // v0.9.0 .mjs/.cjs/.mts/.cts fix). Fails when walk() runs with `dot: false`;
+    // passes once `dot: true` is set (the ignore list still excludes .git /
+    // node_modules, so only real dotfile source configs are re-included).
+    const dotRoot = mkdtempSync(path.join(tmpdir(), "slopaudit-walk-dot-"));
+    try {
+      writeFileSync(path.join(dotRoot, ".eslintrc.cjs"), "module.exports = { slop: true };\n");
+      writeFileSync(path.join(dotRoot, "normal.ts"), "export const n = 1;\n");
+      const files = await walk(dotRoot);
+      const names = files.map((f) => path.basename(f));
+      expect(names).toContain(".eslintrc.cjs");
+      expect(names).toContain("normal.ts");
+    } finally {
+      rmSync(dotRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("skips .min.mjs minified ESM bundles (fix-walk-min-mjs-cjs-mts-cts-not-excluded)", async () => {
+    // The ignore list excluded .min.js / .min.jsx / .bundle.js but NOT the
+    // .mjs/.cjs/.mts/.cts variants that the v0.9.0 glob addition introduced, so
+    // a minified ESM/CJS/TS-variant bundle committed outside the ignored build
+    // dirs (e.g. `lib.min.mjs` at the repo root) WAS collected and audited as
+    // executable source — emitting noise findings on dense repeated tokens and
+    // inflating linesScanned, diluting the per-100-lines density and dragging
+    // the SlopScore down into a false-clean PASS (the same score-distortion
+    // defect class as the v0.10.0 .d.mts/.d.cts fix). Fails on the old 3-arm
+    // minified ignore; passes once the .min.mjs / .min.cjs / .min.mts / .min.cts
+    // (and .bundle.* variants) arms are added next to .min.js.
+    const minRoot = mkdtempSync(path.join(tmpdir(), "slopaudit-walk-min-"));
+    try {
+      writeFileSync(path.join(minRoot, "lib.min.mjs"), "export const a=1,b=2,c=3,d=4,e=5;\n");
+      writeFileSync(path.join(minRoot, "real.ts"), "export const r = 1;\n");
+      const files = await walk(minRoot);
+      const names = files.map((f) => path.basename(f));
+      expect(names).not.toContain("lib.min.mjs");
+      // the real (non-minified) source is still collected
+      expect(names).toContain("real.ts");
+    } finally {
+      rmSync(minRoot, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("parseFile()", () => {
