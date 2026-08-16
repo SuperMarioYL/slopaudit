@@ -7,6 +7,7 @@ import {
   resolveVersion,
   isEmptyScan,
   propagatedExitCode,
+  buildArgs,
   writeStepSummary,
   setOutputs,
 } from "../scripts/action-entrypoint.mjs";
@@ -231,5 +232,70 @@ describe("fix-action-signal-kill-false-green", () => {
     // be a false green, so the entrypoint must not pass in that case either.
     expect(propagatedExitCode({ status: null, signal: null })).not.toBe(0);
     expect(propagatedExitCode({})).not.toBe(0);
+  });
+});
+
+describe("feat-ignore-user-globs (action parity)", () => {
+  // The `ignore` Action input -> SLOPAUDIT_IGNORE (newline-separated) -> one
+  // repeatable `--ignore <glob>` arg appended to the npx argv, so the Action
+  // can exclude repo-specific examples/bench/custom-outDir dirs the CLI's
+  // built-in ignore list misses. buildArgs is pure + exported so this pins the
+  // threading without spawning npx (mirrors resolveVersion / propagatedExitCode).
+
+  it("action.yml declares an `ignore` input defaulting to empty + threads SLOPAUDIT_IGNORE", () => {
+    // Lockstep guard: the input and the env wiring must both exist so a consumer
+    // setting `with: ignore: examples/**` actually reaches the CLI.
+    expect(inputDefault(actionYml, "ignore")).toBe("");
+    expect(actionYml).toContain("SLOPAUDIT_IGNORE: ${{ inputs.ignore }}");
+  });
+
+  it("appends no --ignore arg when SLOPAUDIT_IGNORE is blank/absent", () => {
+    const base = buildArgs({ SLOPAUDIT_PATH: "src", SLOPAUDIT_VERSION: "latest" });
+    expect(base).not.toContain("--ignore");
+    expect(base).toEqual([
+      "--yes",
+      "slopaudit@latest",
+      "src",
+      "--json",
+      "--no-html",
+      "--no-badge",
+    ]);
+  });
+
+  it("splits a newline-separated SLOPAUDIT_IGNORE into repeatable --ignore <glob> args", () => {
+    const args = buildArgs({
+      SLOPAUDIT_PATH: ".",
+      SLOPAUDIT_VERSION: "0.12.0",
+      SLOPAUDIT_FAIL_ON: "moderate",
+      SLOPAUDIT_IGNORE: "examples/**\nbench/**",
+    });
+    // --fail-on precedes --ignore (order matches the CLI's thread order)
+    const failIdx = args.indexOf("--fail-on");
+    const ignoreIdx = args.indexOf("--ignore");
+    expect(failIdx).toBeGreaterThan(-1);
+    expect(ignoreIdx).toBeGreaterThan(failIdx);
+    // each glob is emitted as its own --ignore <glob> pair, in order
+    const globs = args.filter((_, i) => args[i - 1] === "--ignore");
+    expect(globs).toEqual(["examples/**", "bench/**"]);
+  });
+
+  it("trims and skips blank/whitespace-only ignore lines", () => {
+    const args = buildArgs({
+      SLOPAUDIT_IGNORE: "  examples/**  \n\n   \nbench/**",
+    });
+    const globs = args.filter((_, i) => args[i - 1] === "--ignore");
+    expect(globs).toEqual(["examples/**", "bench/**"]);
+  });
+
+  it("respects the version + path inputs alongside ignore", () => {
+    const args = buildArgs({
+      SLOPAUDIT_PATH: "web",
+      SLOPAUDIT_VERSION: "0.12.0",
+      SLOPAUDIT_IGNORE: "vendor/**",
+    });
+    expect(args[1]).toBe("slopaudit@0.12.0");
+    expect(args[2]).toBe("web");
+    expect(args).toContain("--ignore");
+    expect(args[args.indexOf("--ignore") + 1]).toBe("vendor/**");
   });
 });

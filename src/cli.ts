@@ -42,6 +42,17 @@ function readVersion(): string {
 
 const VERSION = readVersion();
 
+/**
+ * feat-ignore-user-globs: commander coercion for the repeatable `--ignore <glob>`
+ * flag. Each occurrence appends its value to the running array (initial value
+ * `[]`), so `--ignore examples/** --ignore "bench/**"` yields
+ * `["examples/**", "bench/**"]` threaded through collectUnits -> walk(root,
+ * extraIgnores) and appended to walk()'s built-in ignore list.
+ */
+function collectIgnore(value: string, previous: string[]): string[] {
+  return previous.concat(value);
+}
+
 interface RunOptions {
   json?: boolean;
   html?: boolean; // commander: --no-html => html === false
@@ -49,6 +60,7 @@ interface RunOptions {
   list?: boolean;
   failOn?: string; // m4: --fail-on <band|score> CI gate threshold
   format?: string; // m7: --format github => GitHub Actions inline annotations
+  ignore?: string[]; // feat-ignore-user-globs: repeatable --ignore <glob>
 }
 
 /**
@@ -70,8 +82,8 @@ async function loadUnit(filePath: string): Promise<FileUnit | null> {
   return { file: filePath, code, lineCount, ast };
 }
 
-async function collectUnits(root: string): Promise<FileUnit[]> {
-  const files = await walk(root);
+async function collectUnits(root: string, extraIgnores: string[] = []): Promise<FileUnit[]> {
+  const files = await walk(root, extraIgnores);
   const units: FileUnit[] = [];
   for (const f of files) {
     const unit = await loadUnit(f);
@@ -80,16 +92,16 @@ async function collectUnits(root: string): Promise<FileUnit[]> {
   return units;
 }
 
-async function runList(rootArg: string): Promise<void> {
+async function runList(rootArg: string, opts: RunOptions): Promise<void> {
   const root = resolve(rootArg);
-  const units = await collectUnits(root);
+  const units = await collectUnits(root, opts.ignore ?? []);
   const inventory = units.map((u) => ({ file: u.file, lineCount: u.lineCount }));
   process.stdout.write(renderInventory(inventory) + "\n");
 }
 
 async function runAudit(rootArg: string, opts: RunOptions): Promise<void> {
   const root = resolve(rootArg);
-  const units = await collectUnits(root);
+  const units = await collectUnits(root, opts.ignore ?? []);
 
   const findings: SlopFinding[] = [];
   let linesScanned = 0;
@@ -219,6 +231,12 @@ program
     "--fail-on <threshold>",
     "exit non-zero if the SlopScore meets/exceeds <threshold> (band clean|moderate|heavy, or an integer 0-100) — for CI gating",
   )
+  .option(
+    "--ignore <glob>",
+    "glob of files/dirs to exclude from the audit (repeatable, e.g. --ignore 'examples/**' --ignore 'bench/**') for repo-specific generated/vendored/example dirs the built-in ignore list misses",
+    collectIgnore,
+    [],
+  )
   .action(async (path: string, opts: RunOptions) => {
     try {
       if (opts.list) {
@@ -234,7 +252,7 @@ program
           process.exitCode = 2;
           return;
         }
-        await runList(path);
+        await runList(path, opts);
       } else {
         await runAudit(path, opts);
       }

@@ -68,15 +68,24 @@ export function propagatedExitCode(result) {
   return typeof result?.status === "number" ? result.status : 1;
 }
 
-export { writeStepSummary, setOutputs, emitAnnotations };
-
-function main() {
+/**
+ * feat-ignore-user-globs: build the `npx slopaudit` argv from the Action env.
+ * The `ignore` Action input is exposed as SLOPAUDIT_IGNORE (a single
+ * newline-separated string); split it on newlines and emit one repeatable
+ * `--ignore <glob>` arg per non-blank line, appended after --fail-on so the
+ * CLI threads each through collectUnits -> walk(root, extraIgnores) appended
+ * to walk()'s built-in ignore list. Pure + exported so vitest can pin the
+ * --ignore threading without spawning npx (mirrors resolveVersion /
+ * isEmptyScan / propagatedExitCode).
+ */
+export function buildArgs(env = process.env) {
   const path =
-    process.env.SLOPAUDIT_PATH && process.env.SLOPAUDIT_PATH.length > 0
-      ? process.env.SLOPAUDIT_PATH
+    env.SLOPAUDIT_PATH && env.SLOPAUDIT_PATH.length > 0
+      ? env.SLOPAUDIT_PATH
       : ".";
-  const failOn = (process.env.SLOPAUDIT_FAIL_ON ?? "").trim();
-  const version = resolveVersion();
+  const failOn = (env.SLOPAUDIT_FAIL_ON ?? "").trim();
+  const version = resolveVersion(env);
+  const ignoreRaw = (env.SLOPAUDIT_IGNORE ?? "").trim();
 
   const args = [
     "--yes",
@@ -89,6 +98,21 @@ function main() {
   if (failOn.length > 0) {
     args.push("--fail-on", failOn);
   }
+  if (ignoreRaw.length > 0) {
+    for (const line of ignoreRaw.split(/\r?\n/)) {
+      const g = line.trim();
+      if (g.length > 0) {
+        args.push("--ignore", g);
+      }
+    }
+  }
+  return args;
+}
+
+export { writeStepSummary, setOutputs, emitAnnotations };
+
+function main() {
+  const args = buildArgs();
 
   // stdout is captured (the JSON report); stderr streams straight to the log.
   const result = spawnSync("npx", args, {

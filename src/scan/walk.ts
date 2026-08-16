@@ -17,8 +17,17 @@ import path from "node:path";
  * the headline CI gate). parseFile already handles them: .mts/.cts via the
  * existing "typescript" plugin and .mjs/.cjs via sourceType:"module" +
  * allowReturnOutsideFunction, so no parser change was needed.
+ *
+ * feat-ignore-user-globs: `extraIgnores` lets a user append repo-specific
+ * globs (e.g. "examples/**", "bench/**", a custom outDir) the built-in ignore
+ * list misses, so those dirs are not collected and audited as executable
+ * source (which would emit noise findings on example/generated code and
+ * inflate linesScanned — the same score-distortion shape the v0.9-v0.11 fixes
+ * removed for the built-in dirs). fast-glob already merges the array, so no
+ * new runtime dep is needed; `extraIgnores` defaults to `[]` so `walk(root)`
+ * stays back-compatible with every existing caller and test.
  */
-export async function walk(root: string): Promise<string[]> {
+export async function walk(root: string, extraIgnores: string[] = []): Promise<string[]> {
   const cwd = path.resolve(root);
 
   const entries = await fg("**/*.{js,jsx,ts,tsx,mjs,cjs,mts,cts}", {
@@ -93,6 +102,11 @@ export async function walk(root: string): Promise<string[]> {
       // .mjs/.cjs/.mts/.cts glob addition missed these in the ignore list.
       "**/*.d.mts",
       "**/*.d.cts",
+      // feat-ignore-user-globs: user-supplied globs from the repeatable
+      // `--ignore <glob>` CLI flag (and the SLOPAUDIT_IGNORE Action env),
+      // appended to the built-in list so repo-specific generated/vendored/
+      // example dirs the hardcoded list misses are excluded too.
+      ...extraIgnores,
     ],
   });
 

@@ -27,6 +27,15 @@ inputs:
       the version this Action ships with.
     required: false
     default: "latest"
+  ignore:
+    description: >-
+      Newline-separated list of globs to exclude from the audit (repeatable
+      `--ignore <glob>` under the hood) for repo-specific generated/vendored/
+      example dirs the built-in ignore list misses — e.g. "examples/**" on one
+      line and "bench/**" on the next. Leave empty to audit everything the CLI
+      collects by default.
+    required: false
+    default: ""
 
 outputs:
   score:
@@ -45,4 +54,5 @@ runs:
         SLOPAUDIT_PATH: ${{ inputs.path }}
         SLOPAUDIT_FAIL_ON: ${{ inputs.fail-on }}
         SLOPAUDIT_VERSION: ${{ inputs.version }}
+        SLOPAUDIT_IGNORE: ${{ inputs.ignore }}
       run: node "${GITHUB_ACTION_PATH}/scripts/action-entrypoint.mjs"

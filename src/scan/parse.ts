@@ -53,11 +53,27 @@ export function parseFile(filePath: string, code: string): ParseResult {
   }
 }
 
+/**
+ * Count the lines of `code` using the `wc -l` / editor convention so a source
+ * file ending in a trailing "\n" — the standard shape prettier/eslint/git
+ * enforce for ~all files — is not over-counted by one.
+ *
+ * fix-countlines-trailing-newline-off-by-one: the previous implementation
+ * returned (#"\n")+1, spawning a phantom empty last line for every
+ * trailing-newline-terminated file (e.g. a 3-line "a\nb\nc\n" was counted as
+ * 4 — a wrong value even codified by the test suite). lineCount feeds
+ * linesScanned and the SlopScore density (totalWeight/linesScanned)*100, so
+ * both were inflated, able to drag a moderate-ceiling repo below the
+ * --fail-on threshold into a false-clean PASS. Convention:
+ *   - empty file  => 0
+ *   - ends with "\n" => #"\n"          (one line per newline)
+ *   - no trailing "\n" => #"\n" + 1    (the final unterminated line counts)
+ */
 function countLines(code: string): number {
   if (code.length === 0) return 0;
-  let lines = 1;
+  let newlines = 0;
   for (let i = 0; i < code.length; i++) {
-    if (code.charCodeAt(i) === 10 /* \n */) lines++;
+    if (code.charCodeAt(i) === 10 /* \n */) newlines++;
   }
-  return lines;
+  return code.charCodeAt(code.length - 1) === 10 /* \n */ ? newlines : newlines + 1;
 }

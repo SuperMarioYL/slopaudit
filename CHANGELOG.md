@@ -11,6 +11,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Hosted team tier: SlopScore *history* across org repos, delta-vs-main gating, leadership dashboard.
 - Additional language detectors (Python / Go / Rust) behind the existing pure-function detector seam.
 
+## [0.12.0] - 2026-08-16
+
+Score-correctness + DX release. One verified high-severity fix and one small
+self-contained feature from a source audit of the shipped v0.11.0 line counter
+and walker — no new detector, ecosystem, or runtime dependency. The fix is
+guarded by a regression test that fails on the v0.11.0 counter (it over-counts
+a trailing-newline-terminated file) and passes once the fix is applied; the
+feature is guarded by a test that fails when `walk()` ignores its 2nd arg and
+passes once user globs are appended to the built-in ignore list.
+
+### Fixed
+- **`countLines()` no longer over-counts a trailing-newline-terminated file by
+  one** (`src/scan/parse.ts`). `countLines()` returned `(#"\n")+1`, so a source
+  file ending in a trailing `"\n"` — the standard shape prettier/eslint/git
+  enforce for ~all files — spawned a phantom empty last line: a 3-line
+  `const a = 1;\nconst b = 2;\nconst c = 3;\n` was counted as 4 (this wrong
+  value was even codified by the test suite as `.toBe(4)`). `lineCount` feeds
+  `linesScanned` and the per-file / repo density `(totalWeight/linesScanned)*100`
+  (`src/score/aggregate.ts`), so both were inflated on every run, dragging the
+  SlopScore down — able to pull a moderate-ceiling repo (many small util/config
+  files each ending in `"\n"`, inflating `linesScanned` by ~+1 per file) below
+  the `--fail-on moderate` (ceiling 34) threshold into a false-clean PASS,
+  the same score-distortion / false-green-at-gate defect class as the
+  v0.9-v0.11 `walk.ts` scan-coverage fixes. It also corrupted the user-facing
+  "X lines scanned" report on every run (`src/report/terminal.ts`,
+  `src/report/html.ts`, `scripts/action-entrypoint.mjs`). `countLines()` now
+  follows the `wc -l` / editor convention: empty file => 0; ends with `"\n"` =>
+  `#"\n"`; no trailing `"\n"` => `#"\n"+1`. No parser or SlopScore-schema change
+  was needed. Guarded by a regression test asserting
+  `parseFile("m.ts", "…c = 3;\n").lineCount === 3` (fails `.toBe(4)` on the old
+  `#"\n"+1` implementation), plus guard cases for a no-trailing-newline file
+  (still 3) and an empty file (0).
+  (`src/scan/parse.ts`, `fix-countlines-trailing-newline-off-by-one`)
+
+### Added
+- **Repeatable `--ignore <glob>` CLI flag to exclude repo-specific dirs the
+  built-in ignore list misses** (`src/scan/walk.ts`, `src/cli.ts`). `walk()`
+  hardcoded its ignore array and exposed no way for a user to extend it, so any
+  repo-specific generated/vendored/example dir NOT in the built-in list (e.g.
+  `examples/`, `benchmarks/`, e2e fixtures, `__snapshots__/`, a custom build
+  outDir like `pkg/dist-bundle/`) was collected and audited as executable
+  source — emitting noise findings on example/generated code and inflating
+  `linesScanned`, exactly the score-distortion shape the v0.9-v0.11 fixes
+  removed for the built-in dirs. A repeatable `--ignore <glob>` flag (e.g.
+  `slopaudit . --ignore 'examples/**' --ignore 'bench/**'`) is threaded through
+  `collectUnits` -> `walk(root, extraIgnores)`, appended to `walk()`'s existing
+  ignore array (`extraIgnores` defaults to `[]`, so `walk(root)` stays
+  back-compatible with every existing caller and test). No new runtime
+  dependency — `fast-glob` already merges the array. CI parity: mirrored as an
+  `ignore` input on `action.yml` (newline-separated) and a `SLOPAUDIT_IGNORE`
+  env in `scripts/action-entrypoint.mjs`, split into repeatable `--ignore` args
+  via a pure, exported `buildArgs(env)` helper. Guarded by a `scan.test.ts`
+  case asserting `walk(root, ["examples/**"])` omits `examples/slop.ts` while
+  still returning `real.ts` (fails when `walk()` ignores its 2nd arg; passes
+  once `extraIgnores` is appended), plus `action.test.ts` cases pinning the
+  newline-split -> repeatable-arg threading.
+  (`src/scan/walk.ts`, `src/cli.ts`, `action.yml`, `scripts/action-entrypoint.mjs`,
+  `feat-ignore-user-globs`)
+
+### Changed
+- Bumped the GitHub Pages marketing surface (`web/site.json` via the
+  web-factory@v1.1 locale renderer) content provenance from `v0.11.0` to
+  `v0.12.0` — the recurring per-release completion step the v0.11.0 amendment
+  performed. This release-notes copy surfaces both v0.12.0 changes: the
+  headline correctness fix (`countLines()` no longer over-counts lines by one
+  per trailing-newline-terminated file, correcting the `linesScanned` metric
+  and the SlopScore density that had been silently dragged down toward a
+  false-clean PASS) and the new DX flag (a repeatable `--ignore <glob>` so
+  users can exclude repo-specific examples/bench/custom-outDir dirs the
+  built-in ignore list misses).
+
 ## [0.11.0] - 2026-08-13
 
 Scan-coverage / score-distortion release. Two verified fixes from a source

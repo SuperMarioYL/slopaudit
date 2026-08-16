@@ -145,6 +145,42 @@ describe("walk()", () => {
       rmSync(minRoot, { recursive: true, force: true });
     }
   });
+
+  it("honors a user-supplied --ignore glob (feat-ignore-user-globs)", async () => {
+    // walk() hardcodes its ignore array and exposes no way to extend it, so any
+    // repo-specific generated/vendored/example dir NOT in the built-in list
+    // (examples/, benchmarks/, e2e fixtures, __snapshots__/, a custom outDir)
+    // is collected and audited as executable source — emitting noise findings
+    // on example/generated code and inflating linesScanned, exactly the
+    // score-distortion shape the v0.9-v0.11 fixes removed for the built-in dirs.
+    // The repeatable --ignore <glob> CLI flag threads an extra ignore array
+    // through walk(root, extraIgnores), appended to the built-in ignore list
+    // (extraIgnores defaults to [] so walk(root) stays back-compatible with
+    // every existing test). Fails when walk() ignores its 2nd arg (returns
+    // examples/slop.ts); passes once extraIgnores is appended to the ignore array.
+    const ignoreRoot = mkdtempSync(path.join(tmpdir(), "slopaudit-walk-ignore-"));
+    try {
+      writeFileSync(path.join(ignoreRoot, "real.ts"), "export const r = 1;\n");
+      mkdirSync(path.join(ignoreRoot, "examples"), { recursive: true });
+      writeFileSync(path.join(ignoreRoot, "examples", "slop.ts"), "export const s = 1;\n");
+
+      // No extra ignore: both the real source and the example file are collected
+      // (examples/ is NOT in the built-in ignore list, so it is audited today).
+      const all = await walk(ignoreRoot);
+      const allNames = all.map((f) => path.basename(f));
+      expect(allNames).toContain("real.ts");
+      expect(allNames).toContain("slop.ts");
+
+      // With --ignore examples/**: examples/slop.ts is excluded while real.ts is
+      // still collected.
+      const filtered = await walk(ignoreRoot, ["examples/**"]);
+      const filteredNames = filtered.map((f) => path.basename(f));
+      expect(filteredNames).toContain("real.ts");
+      expect(filteredNames).not.toContain("slop.ts");
+    } finally {
+      rmSync(ignoreRoot, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("parseFile()", () => {
@@ -178,9 +214,35 @@ class Counter {
     expect(res.error).toBeUndefined();
   });
 
-  it("counts lines", () => {
+  it("counts a trailing-newline-terminated file as one line per newline (fix-countlines-trailing-newline-off-by-one)", () => {
+    // countLines() used to return (#"\n")+1, so a source file ending in a
+    // trailing "\n" — the standard shape prettier/eslint/git enforce for ~all
+    // files — spawned a phantom empty last line: a 3-line
+    // "const a=1;\n…c=3;\n" was counted as 4 (this wrong value was even codified
+    // here as .toBe(4)). lineCount feeds linesScanned and the SlopScore density
+    // (totalWeight/linesScanned)*100, so both were inflated, dragging the score
+    // down toward a false-clean PASS at the --fail-on gate. Now countLines
+    // follows the wc -l / editor convention. Fails (.toBe(4) on the old
+    // #"\n"+1 implementation; expects .toBe(3)) — red before the fix, green after.
     const res = parseFile("m.ts", "const a = 1;\nconst b = 2;\nconst c = 3;\n");
-    expect(res.lineCount).toBe(4);
+    expect(res.lineCount).toBe(3);
+  });
+
+  it("counts a file with no trailing newline as #newlines + 1 (fix-countlines-trailing-newline-off-by-one)", () => {
+    // Guard: a file with NO trailing "\n" still has one more line than its
+    // newline count (the final unterminated line). "a\nb\nc" has 2 newlines =>
+    // 3 lines. This case was already correct under the old #"\n"+1 rule; the
+    // fix must not regress it.
+    const res = parseFile("m.ts", "a\nb\nc");
+    expect(res.lineCount).toBe(3);
+  });
+
+  it("counts an empty file as 0 lines (fix-countlines-trailing-newline-off-by-one)", () => {
+    // Guard: an empty file is 0 lines (not 1), matching wc -l and keeping a
+    // 0-byte file from inflating linesScanned. Already correct under both the
+    // old and new rules; pinned so the fix's empty-file fast path stays 0.
+    const res = parseFile("e.ts", "");
+    expect(res.lineCount).toBe(0);
   });
 
   it("returns { ast: null, error } for malformed input without throwing", () => {
