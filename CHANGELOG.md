@@ -11,6 +11,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Hosted team tier: SlopScore *history* across org repos, delta-vs-main gating, leadership dashboard.
 - Additional language detectors (Python / Go / Rust) behind the existing pure-function detector seam.
 
+## [0.13.0] - 2026-08-19
+
+Fix-only release. One verified high-severity correctness fix to the packaged
+GitHub Action entrypoint — no new detector, ecosystem, or runtime dependency.
+Guarded by a regression test that statically confirms `main()` declares its
+own `failOn` (the v0.12.0 bug left it undeclared) and pins the new exported
+`resolveFailOn()` helper, which would have caught the `ReferenceError` that
+silently broke every Action run after the CLI emitted its JSON.
+
+### Fixed
+- **The GitHub Action entrypoint no longer throws `ReferenceError: failOn is
+  not defined` on every run** (`scripts/action-entrypoint.mjs`). The v0.12.0
+  `buildArgs` refactor moved the only `const failOn` declaration INTO
+  `buildArgs()`, but `main()` kept calling `writeStepSummary(score, failOn,
+  result.status)` with no `failOn` in scope. ESM is strict, so reading the
+  undeclared binding threw on every Action run that reached `writeStepSummary`
+  — after the CLI emitted its JSON, the `$GITHUB_STEP_SUMMARY` headline badge
+  + worst offenders were never written, the `score`/`band` step outputs were
+  never set, and the PR annotations (`emitAnnotations`) were never emitted;
+  the uncaught exception made node exit 1 regardless of the CLI's real exit
+  code, so a clean repo (CLI exit 0) FALSELY FAILED the CI job — the headline
+  CI gate the tool exists to enforce. The test suite missed it because every
+  case pinned the pure `buildArgs` helper and nothing exercised `main()` (it
+  spawns `npx`). Fix: extract `resolveFailOn()` (pure + exported) and have
+  BOTH `main()` and `buildArgs()` read `failOn` from it, so `main()` declares
+  its own in-scope `failOn` for the `writeStepSummary` call.
+
 ## [0.12.0] - 2026-08-16
 
 Score-correctness + DX release. One verified high-severity fix and one small

@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   resolveVersion,
+  resolveFailOn,
   isEmptyScan,
   propagatedExitCode,
   buildArgs,
@@ -265,7 +266,7 @@ describe("feat-ignore-user-globs (action parity)", () => {
   it("splits a newline-separated SLOPAUDIT_IGNORE into repeatable --ignore <glob> args", () => {
     const args = buildArgs({
       SLOPAUDIT_PATH: ".",
-      SLOPAUDIT_VERSION: "0.12.0",
+      SLOPAUDIT_VERSION: "0.13.0",
       SLOPAUDIT_FAIL_ON: "moderate",
       SLOPAUDIT_IGNORE: "examples/**\nbench/**",
     });
@@ -290,12 +291,80 @@ describe("feat-ignore-user-globs (action parity)", () => {
   it("respects the version + path inputs alongside ignore", () => {
     const args = buildArgs({
       SLOPAUDIT_PATH: "web",
-      SLOPAUDIT_VERSION: "0.12.0",
+      SLOPAUDIT_VERSION: "0.13.0",
       SLOPAUDIT_IGNORE: "vendor/**",
     });
-    expect(args[1]).toBe("slopaudit@0.12.0");
+    expect(args[1]).toBe("slopaudit@0.13.0");
     expect(args[2]).toBe("web");
     expect(args).toContain("--ignore");
     expect(args[args.indexOf("--ignore") + 1]).toBe("vendor/**");
+  });
+});
+
+describe("fix-action-main-undef-failon-referenceerror", () => {
+  // The v0.12.0 buildArgs refactor moved the only `const failOn` declaration
+  // INTO buildArgs(), but main() kept calling writeStepSummary(score, failOn,
+  // result.status) with no failOn in scope — ESM strict threw ReferenceError
+  // on every Action run, dropping the step summary / $GITHUB_OUTPUT outputs /
+  // PR annotations and making node exit 1 regardless of the real gate (a
+  // clean repo falsely failed CI). main() can't be unit-tested directly (it
+  // spawns npx), so the fix extracts resolveFailOn() and has BOTH main() and
+  // buildArgs() read failOn from it; these cases pin the helper and statically
+  // confirm main() declares its own failOn.
+
+  it("resolveFailOn reads SLOPAUDIT_FAIL_ON from a passed env (trimmed)", () => {
+    expect(resolveFailOn({ SLOPAUDIT_FAIL_ON: "high" })).toBe("high");
+    expect(resolveFailOn({ SLOPAUDIT_FAIL_ON: "  moderate  " })).toBe("moderate");
+    expect(resolveFailOn({})).toBe("");
+    expect(resolveFailOn({ SLOPAUDIT_FAIL_ON: "" })).toBe("");
+    expect(resolveFailOn({ SLOPAUDIT_FAIL_ON: "   " })).toBe("");
+  });
+
+  it("resolveFailOn reads process.env when called with no arg", () => {
+    const prev = process.env.SLOPAUDIT_FAIL_ON;
+    try {
+      process.env.SLOPAUDIT_FAIL_ON = "heavy";
+      expect(resolveFailOn()).toBe("heavy");
+      delete process.env.SLOPAUDIT_FAIL_ON;
+      expect(resolveFailOn()).toBe("");
+    } finally {
+      if (prev === undefined) delete process.env.SLOPAUDIT_FAIL_ON;
+      else process.env.SLOPAUDIT_FAIL_ON = prev;
+    }
+  });
+
+  it("main() declares failOn via resolveFailOn so writeStepSummary no longer throws ReferenceError", () => {
+    // Regression guard: if a future refactor moves failOn back into buildArgs
+    // only, main()'s writeStepSummary(score, failOn, ...) would reference an
+    // undeclared name again and throw ReferenceError. Statically confirm
+    // main() declares its own failOn (through the shared helper) by slicing
+    // main()'s source range — fails on the v0.12.0 bug, passes after the fix.
+    const src = readFileSync(
+      join(here, "..", "scripts", "action-entrypoint.mjs"),
+      "utf8",
+    );
+    const mainStart = src.indexOf("function main()");
+    expect(mainStart).toBeGreaterThan(-1);
+    // main() runs up to the `// Only run when invoked directly` marker that
+    // precedes the isMain guard at the bottom of the module.
+    const mainEnd = src.indexOf("// Only run when invoked directly", mainStart);
+    const mainBody = src.slice(mainStart, mainEnd === -1 ? undefined : mainEnd);
+    // The shared helper must be referenced inside main()'s body...
+    expect(mainBody).toContain("resolveFailOn");
+    // ...failOn must be declared there (not left to an out-of-scope binding)...
+    expect(mainBody).toMatch(/const\s+failOn\b/);
+    // ...and the writeStepSummary call must still pass that failOn along.
+    expect(mainBody).toContain("writeStepSummary(score, failOn");
+  });
+
+  it("buildArgs reads failOn through resolveFailOn (parity with main, single source)", () => {
+    // buildArgs must derive failOn the same way main does so the gate argv and
+    // the summary stay in lockstep (one resolution, two call sites).
+    const args = buildArgs({ SLOPAUDIT_FAIL_ON: "heavy", SLOPAUDIT_PATH: "." });
+    expect(args).toContain("--fail-on");
+    expect(args[args.indexOf("--fail-on") + 1]).toBe("heavy");
+    // absent failOn => no --fail-on arg
+    const base = buildArgs({ SLOPAUDIT_PATH: "." });
+    expect(base).not.toContain("--fail-on");
   });
 });

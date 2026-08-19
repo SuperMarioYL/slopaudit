@@ -69,6 +69,23 @@ export function propagatedExitCode(result) {
 }
 
 /**
+ * fix-action-main-undef-failon-referenceerror: the v0.12.0 buildArgs refactor
+ * moved `const failOn = (env.SLOPAUDIT_FAIL_ON ?? "").trim()` INTO buildArgs()
+ * (line 86, now a local there), but main() still called
+ * writeStepSummary(score, failOn, result.status) with no failOn in scope — ESM
+ * is strict, so reading the undeclared failOn threw ReferenceError on every
+ * Action run that reached writeStepSummary, dropping the step summary/outputs/
+ * PR annotations and making node exit 1 regardless of the real gate (a clean
+ * repo falsely failed CI). Extract the resolution into a pure exported helper
+ * so BOTH main() and buildArgs() read failOn from the same single source, and a
+ * vitest case can pin it without spawning npx (mirrors resolveVersion /
+ * isEmptyScan / propagatedExitCode).
+ */
+export function resolveFailOn(env = process.env) {
+  return (env?.SLOPAUDIT_FAIL_ON ?? "").trim();
+}
+
+/**
  * feat-ignore-user-globs: build the `npx slopaudit` argv from the Action env.
  * The `ignore` Action input is exposed as SLOPAUDIT_IGNORE (a single
  * newline-separated string); split it on newlines and emit one repeatable
@@ -83,7 +100,7 @@ export function buildArgs(env = process.env) {
     env.SLOPAUDIT_PATH && env.SLOPAUDIT_PATH.length > 0
       ? env.SLOPAUDIT_PATH
       : ".";
-  const failOn = (env.SLOPAUDIT_FAIL_ON ?? "").trim();
+  const failOn = resolveFailOn(env);
   const version = resolveVersion(env);
   const ignoreRaw = (env.SLOPAUDIT_IGNORE ?? "").trim();
 
@@ -112,6 +129,13 @@ export function buildArgs(env = process.env) {
 export { writeStepSummary, setOutputs, emitAnnotations };
 
 function main() {
+  // fix-action-main-undef-failon-referenceerror: redeclare failOn in main()'s
+  // own scope (via the same resolveFailOn() buildArgs uses) so the
+  // writeStepSummary(score, failOn, result.status) call below resolves the
+  // binding instead of throwing ReferenceError on every Action run — the
+  // v0.12.0 buildArgs refactor had moved the only `const failOn` declaration
+  // into buildArgs(), leaving main() with no failOn in scope.
+  const failOn = resolveFailOn();
   const args = buildArgs();
 
   // stdout is captured (the JSON report); stderr streams straight to the log.

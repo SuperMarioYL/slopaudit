@@ -117,8 +117,15 @@
     }
   },
   "meta": {
-    "content_version": "v0.12.0",
-    "generated_at": "2026-08-16 12:42:00+00:00",
-    "web_factory_ref": "v1.1"
+    "content_version": "v0.13.0",
+    "generated_at": "2026-08-19 14:30:00+00:00",
+    "web_factory_ref": "v1.1",
+    "changelog": [
+      {
+        "version": "v0.13.0",
+        "en": "fix: the GitHub Action entrypoint no longer throws ReferenceError on failOn — clean repos no longer falsely fail CI",
+        "zh": "修复：GitHub Action 入口不再因 failOn 抛出 ReferenceError —— 干净的仓库不再被 CI 误判失败"
+      }
+    ]
   }
 }
