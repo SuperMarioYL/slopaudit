@@ -127,5 +127,14 @@
         "zh": "修复：GitHub Action 入口不再因 failOn 抛出 ReferenceError —— 干净的仓库不再被 CI 误判失败"
       }
     ]
-  }
+  },
+  "content_version": "v0.14.0",
+  "generated_at": "2026-08-23T19:11:14Z",
+  "changelog": [
+    {
+      "version": "v0.14.0",
+      "date": "2026-08-24",
+      "note": "refresh: content re-verified for v0.14.0 (fix-double-count-copy-paste-vs-boilerplate + fix-walk-dot-true-collects-generated-dot-dirs — SlopScore is now more accurate: no double-counted block pairs, no false-clean from generated dot-dirs)."
+    }
+  ]
 }
