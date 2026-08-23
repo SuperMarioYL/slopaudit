@@ -5,6 +5,7 @@ import { detectOverAbstraction } from "../src/detectors/overAbstraction.js";
 import { detectGenericBoilerplate } from "../src/detectors/genericBoilerplate.js";
 import { detectPlausibleButWrong } from "../src/detectors/plausibleButWrong.js";
 import { detectDeadParameter } from "../src/detectors/deadParameter.js";
+import { detectCopyPasteClone } from "../src/detectors/copyPasteClone.js";
 
 /** Build a FileUnit from an inline code string, the same shape cli.ts produces. */
 function unit(code: string, file = "fixture.ts"): FileUnit {
@@ -85,6 +86,47 @@ function r3() {
 
   it("returns [] on clean code", () => {
     expect(detectGenericBoilerplate(unit(CLEAN))).toEqual([]);
+  });
+
+  // v0.14.0 fix-double-count-copy-paste-vs-boilerplate: structuralType
+  // collapsed every IfStatement to the bare constant "If", so two blocks that
+  // differed only in an if-branch's body collided as a generic_boilerplate
+  // "exact duplicate block" while copyPasteClone's own deeper `structuralSig`
+  // still saw the difference and flagged the pair as a near-duplicate — the
+  // same block pair was double-counted (a false-red at `--fail-on`).
+  // structuralType now recurses into the if-arms, so the pair no longer
+  // collides here; copyPasteClone keeps it as its exclusive near-duplicate
+  // (1 finding across both detectors, not 2). Fails on the bare "If" collapse
+  // (boiler emits a "duplicate statement blocks" finding); passes after.
+  it("does not double-count two blocks differing only in an if-body (fix-double-count-copy-paste-vs-boilerplate)", () => {
+    const slop = `
+function a() {
+  if (cond) { obj.doA(); }
+  log("a");
+  log("b");
+  log("c");
+  log("d");
+}
+function b() {
+  if (cond) { doB(1); }
+  log("a");
+  log("b");
+  log("c");
+  log("d");
+}
+`;
+    const u = unit(slop);
+    // genericBoilerplate no longer sees these as an exact duplicate block — the
+    // if-bodies differ (Call/0 vs Call/1), so their structuralType sequences
+    // diverge and the pair is not clustered as a duplicate.
+    const dupBlocks = detectGenericBoilerplate(u).filter((f) =>
+      /duplicate statement blocks/.test(f.evidence),
+    );
+    expect(dupBlocks).toEqual([]);
+    // copyPasteClone still owns the near-duplicate — the pair is counted once.
+    const clone = detectCopyPasteClone(u);
+    expect(clone.length).toBe(1);
+    expect(clone[0].category).toBe("copy_paste_clone");
   });
 });
 

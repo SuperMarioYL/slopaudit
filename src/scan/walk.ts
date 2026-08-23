@@ -65,6 +65,21 @@ export async function walk(root: string, extraIgnores: string[] = []): Promise<s
       "**/.output/**",
       "**/.angular/**",
       "**/.expo/**",
+      // fix-walk-dot-true-collects-generated-dot-dirs: v0.11.0 set `dot: true`
+      // to stop dotfile CONFIG sources (.eslintrc.cjs/.babelrc.js) being
+      // silently dropped, but that also made fast-glob descend into
+      // dot-DIRECTORIES that are generated build/test output but were NOT in
+      // the ignore list — .docusaurus/ (Docusaurus build chunks), .stryker-tmp/
+      // (Stryker mutation-test temp), .rollup.cache/ (Rollup cache). Their
+      // generated JS was collected and audited as executable source, inflating
+      // linesScanned and diluting the per-100-lines density so the SlopScore
+      // was dragged down toward a false-clean PASS (the same score-distortion
+      // defect class as the v0.9-v0.11 minified/declaration fixes). Excluding
+      // them next to the named build dirs keeps `dot: true` re-including only
+      // real dotfile source configs.
+      "**/.docusaurus/**",
+      "**/.stryker-tmp/**",
+      "**/.rollup.cache/**",
       "**/__generated__/**",
       "**/generated/**",
       "**/storybook-static/**",

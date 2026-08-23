@@ -121,8 +121,44 @@ describe("walk()", () => {
     }
   });
 
-  it("skips .min.mjs minified ESM bundles (fix-walk-min-mjs-cjs-mts-cts-not-excluded)", async () => {
-    // The ignore list excluded .min.js / .min.jsx / .bundle.js but NOT the
+  it("excludes generated dot-directories re-collected by dot:true (fix-walk-dot-true-collects-generated-dot-dirs)", async () => {
+    // v0.11.0 set `dot: true` to stop dotfile CONFIG sources (.eslintrc.cjs)
+    // being silently dropped, but that also made fast-glob descend into
+    // dot-DIRECTORIES that are generated build/test output but were NOT in the
+    // ignore list — .docusaurus/ (Docusaurus build chunks), .stryker-tmp/
+    // (Stryker mutation-test temp), .rollup.cache/ (Rollup cache). Their
+    // generated JS was collected and audited as executable source, inflating
+    // linesScanned and diluting the per-100-lines density so the SlopScore
+    // was dragged down toward a false-clean PASS (the same score-distortion
+    // defect class as the v0.9-v0.11 minified/declaration fixes). Fails on the
+    // old ignore list (walk returns chunk.js/mutant.js/cache.js); passes once
+    // the three generated dot-dirs are added next to .next/.turbo/.cache.
+    // `dot: true` stays on so real dotfile config sources are still collected.
+    const dotDirRoot = mkdtempSync(path.join(tmpdir(), "slopaudit-walk-dotdir-"));
+    try {
+      mkdirSync(path.join(dotDirRoot, ".docusaurus"), { recursive: true });
+      writeFileSync(path.join(dotDirRoot, ".docusaurus", "chunk.js"), "export const c = 1;\n");
+      mkdirSync(path.join(dotDirRoot, ".stryker-tmp"), { recursive: true });
+      writeFileSync(path.join(dotDirRoot, ".stryker-tmp", "mutant.js"), "export const m = 1;\n");
+      mkdirSync(path.join(dotDirRoot, ".rollup.cache"), { recursive: true });
+      writeFileSync(path.join(dotDirRoot, ".rollup.cache", "cache.js"), "export const r = 1;\n");
+      // dot:true stays on — real dotfile config sources are still collected.
+      writeFileSync(path.join(dotDirRoot, ".eslintrc.cjs"), "module.exports = {};\n");
+      writeFileSync(path.join(dotDirRoot, "real.ts"), "export const n = 1;\n");
+      const files = await walk(dotDirRoot);
+      const names = files.map((f) => path.basename(f));
+      expect(names).not.toContain("chunk.js");
+      expect(names).not.toContain("mutant.js");
+      expect(names).not.toContain("cache.js");
+      // dot:true still re-includes real dotfile source configs.
+      expect(names).toContain(".eslintrc.cjs");
+      expect(names).toContain("real.ts");
+    } finally {
+      rmSync(dotDirRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("skips .min.mjs minified ESM bundles (fix-walk-min-mjs-cjs-mts-cts-not-excluded)", async () => {    // The ignore list excluded .min.js / .min.jsx / .bundle.js but NOT the
     // .mjs/.cjs/.mts/.cts variants that the v0.9.0 glob addition introduced, so
     // a minified ESM/CJS/TS-variant bundle committed outside the ignored build
     // dirs (e.g. `lib.min.mjs` at the repo root) WAS collected and audited as

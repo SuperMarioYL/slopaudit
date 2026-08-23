@@ -132,9 +132,21 @@ function normalizeBlock(stmts: any[]): string | null {
 }
 
 /**
- * Structural fingerprint of a statement: the node type plus shallow shape, but
- * NOT identifier names or literal values — so copy-pasted-then-renamed blocks
- * collapse to the same signature.
+ * Structural fingerprint of a statement: the node type plus the structural
+ * shape of its children, but NOT identifier names or literal values — so
+ * copy-pasted-then-renamed blocks collapse to the same signature.
+ *
+ * fix-double-count-copy-paste-vs-boilerplate: If, For-star, Throw and Try
+ * used to collapse to a bare constant ("If" / "For" / "Throw" / "Try"), so
+ * two blocks that differed only in an if-branch's (or for/throw/try arm's)
+ * internal structure collided as a generic_boilerplate "exact duplicate block" while
+ * copyPasteClone's own deeper `structuralSig` still saw the difference and
+ * flagged the pair as a near-duplicate — the same block pair was
+ * double-counted (a false-red at `--fail-on`). The arms now recurse
+ * (structure-only, names+literals dropped) so two blocks collide only when
+ * structurally identical; near-duplicates stay copyPasteClone's exclusive
+ * domain. The expression shape stays shallow — the file's existing convention,
+ * matching the depth ExpressionStatement/ReturnStatement already use.
  */
 function structuralType(node: any): string {
   if (!node || typeof node.type !== "string") return "?";
@@ -144,19 +156,26 @@ function structuralType(node: any): string {
     case "ReturnStatement":
       return `R(${node.argument ? exprShape(node.argument) : ""})`;
     case "IfStatement":
-      return "If";
+      return `If(${exprShape(node.test)};${structuralType(node.consequent)}${
+        node.alternate ? `;${structuralType(node.alternate)}` : ""
+      })`;
     case "VariableDeclaration":
       return `V${node.declarations?.length ?? 0}`;
     case "ThrowStatement":
-      return "Throw";
+      return `Throw(${exprShape(node.argument)})`;
     case "TryStatement":
-      return "Try";
+      return `Try(${structuralType(node.block)}${
+        node.handler ? `;${normalizeCatch(node.handler)}` : ""
+      }${node.finalizer ? `;${structuralType(node.finalizer)}` : ""})`;
     case "ForStatement":
+      return `For(${structuralType(node.body)};${exprShape(node.test)})`;
     case "ForOfStatement":
     case "ForInStatement":
-      return "For";
+      return `ForOf(${structuralType(node.body)};${exprShape(node.right)})`;
     case "AwaitExpression":
       return "Await";
+    case "BlockStatement":
+      return `{${(node.body ?? []).map(structuralType).join(";")}}`;
     default:
       return node.type;
   }
