@@ -11,6 +11,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Hosted team tier: SlopScore *history* across org repos, delta-vs-main gating, leadership dashboard.
 - Additional language detectors (Python / Go / Rust) behind the existing pure-function detector seam.
 
+## [0.15.0] - 2026-09-01
+
+Fix-only release. Two verified correctness fixes — no new detector, band,
+primitive, or runtime dependency. Both are grounded in reproducible defects in
+the shipped v0.14.0 source and guarded by regression tests.
+
+### Fixed
+- **Stop double-counting a copy-pasted block pair whose only difference is a
+  while/do-while/switch body** (`src/detectors/genericBoilerplate.ts`). The
+  v0.14.0 `fix-double-count-copy-paste-vs-boilerplate` recursed `IfStatement`,
+  the `For*` arms, `ThrowStatement` and `TryStatement` in `structuralType` so
+  two blocks differing only in a branch/loop body no longer collided as a
+  `generic_boilerplate` "exact duplicate block" (which double-counted the pair
+  against `copyPasteClone`'s near-duplicate finding — a false-red at
+  `--fail-on`). But `WhileStatement`, `DoWhileStatement` and `SwitchStatement`
+  still fell through to the bare `default: return node.type` constant, so the
+  same double-count survived in arms the v0.14.0 fix missed. `structuralType`
+  now recurses into the while/do-while body (and the switch cases' consequents)
+  the way `For`/`If` already do, so two blocks collide only when structurally
+  identical; near-duplicates stay `copyPasteClone`'s exclusive domain.
+  Regression tests cover the while, do-while, and switch variants plus the
+  legitimate exact-duplicate path.
+- **`slopaudit --version` now reports the release version** (`package.json`,
+  `VERSION`, `src/cli.ts`). At the shipped v0.14.0 tag `package.json`'s
+  `version` was "0.13.0" while the `VERSION` file was "v0.14.0", and the CLI's
+  `readVersion()` reads from `package.json` alone — so `slopaudit --version`
+  reported 0.13.0 at a release tagged v0.14.0. The v0.14.0 ship bumped the
+  `VERSION` file but not `package.json`, reintroducing the two-place
+  version-drift the v0.2.0 `fix_stale_cli_version` milestone eliminated.
+  `package.json` is now bumped to the release version and a lockstep test
+  (`test/version.test.ts`) asserts the `VERSION` release marker (leading `v`
+  stripped) equals `package.json`'s `version`, so the two surfaces can never
+  silently drift again.
+
 ## [0.13.0] - 2026-08-19
 
 Fix-only release. One verified high-severity correctness fix to the packaged

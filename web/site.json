@@ -117,10 +117,15 @@
     }
   },
   "meta": {
-    "content_version": "v0.13.0",
-    "generated_at": "2026-08-19 14:30:00+00:00",
+    "content_version": "v0.15.0",
+    "generated_at": "2026-09-01T04:19:12Z",
     "web_factory_ref": "v1.1",
     "changelog": [
+      {
+        "version": "v0.15.0",
+        "en": "fix: stop double-counting a copy-pasted block pair whose only difference is a while/do-while/switch body (the v0.14.0 double-count fix missed those arms); fix: slopaudit --version now reports the release version (package.json lagged the VERSION file at v0.14.0, so the CLI misreported 0.13.0 at a v0.14.0 release)",
+        "zh": "修复：复制粘贴后只改了 while/do-while/switch 体的代码块对不再被重复计分（v0.14.0 的去重修复漏了这几个分支）；修复：slopaudit --version 现在正确报告发布版本（v0.14.0 时 package.json 落后于 VERSION 文件，CLI 在 v0.14.0 发布里误报为 0.13.0）"
+      },
       {
         "version": "v0.13.0",
         "en": "fix: the GitHub Action entrypoint no longer throws ReferenceError on failOn — clean repos no longer falsely fail CI",
@@ -128,9 +133,14 @@
       }
     ]
   },
-  "content_version": "v0.14.0",
-  "generated_at": "2026-08-23T19:11:14Z",
+  "content_version": "v0.15.0",
+  "generated_at": "2026-09-01T04:19:12Z",
   "changelog": [
+    {
+      "version": "v0.15.0",
+      "date": "2026-09-01",
+      "note": "fix-only release. (1) fix-structuraltype-while-dowhile-switch-bare-constant: genericBoilerplate's structuralType left WhileStatement/DoWhileStatement/SwitchStatement as a bare constant, so two blocks differing only in a while/do-while/switch body were double-counted (generic_boilerplate exact-duplicate + copy_paste_clone near-duplicate) — a false-red at --fail-on, in arms the v0.14.0 fix missed; now recurses like If/For*. (2) fix-version-drift-package-json-lags-version-file: at v0.14.0 package.json said 0.13.0 while the VERSION file said v0.14.0, so slopaudit --version misreported 0.13.0; package.json is now bumped to the release version and a lockstep test pins the two surfaces. SlopScore is more accurate: no double-counted loop/switch-body block pairs."
+    },
     {
       "version": "v0.14.0",
       "date": "2026-08-24",

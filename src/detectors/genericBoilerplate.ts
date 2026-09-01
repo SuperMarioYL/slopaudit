@@ -147,6 +147,15 @@ function normalizeBlock(stmts: any[]): string | null {
  * structurally identical; near-duplicates stay copyPasteClone's exclusive
  * domain. The expression shape stays shallow — the file's existing convention,
  * matching the depth ExpressionStatement/ReturnStatement already use.
+ *
+ * fix-structuraltype-while-dowhile-switch-bare-constant: the v0.14.0 fix recursed
+ * If, For-star, Throw and Try but left WhileStatement, DoWhileStatement and SwitchStatement
+ * falling through to the bare `default: return node.type` constant, so two blocks
+ * differing only in a while / do-while / switch body still collided as an exact
+ * duplicate here while copyPasteClone's deeper `structuralSig` saw the body
+ * difference and flagged a near-duplicate — the same double-count, in arms the
+ * v0.14.0 fix missed. While, DoWhile and Switch now recurse (body + test, or the
+ * discriminant + each case's consequent statements) the same way For and If do.
  */
 function structuralType(node: any): string {
   if (!node || typeof node.type !== "string") return "?";
@@ -172,6 +181,14 @@ function structuralType(node: any): string {
     case "ForOfStatement":
     case "ForInStatement":
       return `ForOf(${structuralType(node.body)};${exprShape(node.right)})`;
+    case "WhileStatement":
+      return `While(${structuralType(node.body)};${exprShape(node.test)})`;
+    case "DoWhileStatement":
+      return `DoWhile(${structuralType(node.body)};${exprShape(node.test)})`;
+    case "SwitchStatement":
+      return `Switch(${exprShape(node.discriminant)};${(node.cases ?? [])
+        .map((c: any) => (c.consequent ?? []).map(structuralType).join(","))
+        .join(";")})`;
     case "AwaitExpression":
       return "Await";
     case "BlockStatement":

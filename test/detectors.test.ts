@@ -128,6 +128,131 @@ function b() {
     expect(clone.length).toBe(1);
     expect(clone[0].category).toBe("copy_paste_clone");
   });
+
+  // v0.15.0 fix-structuraltype-while-dowhile-switch-bare-constant: the v0.14.0
+  // fix recursed If/For*/Throw/Try in structuralType but left WhileStatement,
+  // DoWhileStatement and SwitchStatement falling through to the bare
+  // `default: return node.type` constant, so two blocks differing only in a
+  // while/do-while/switch body collided as a generic_boilerplate "exact duplicate"
+  // while copyPasteClone's deeper structuralSig saw the body difference and flagged
+  // a near-duplicate — the same double-count, in arms the v0.14.0 fix missed.
+  // structuralType now recurses into the while/do-while body (and the switch
+  // cases' consequents), so the pair no longer collides here; copyPasteClone
+  // keeps it as its exclusive near-duplicate (1 finding across both, not 2).
+  // Fails on the bare "WhileStatement" collapse (boiler emits a "duplicate
+  // statement blocks" finding); passes after.
+  it("does not double-count two blocks differing only in a while-body (fix-structuraltype-while-dowhile-switch-bare-constant)", () => {
+    const slop = `
+function a() {
+  while (cond) { doA(); }
+  log("a");
+  log("b");
+  log("c");
+  log("d");
+}
+function b() {
+  while (cond) { doB(1); }
+  log("a");
+  log("b");
+  log("c");
+  log("d");
+}
+`;
+    const u = unit(slop);
+    const dupBlocks = detectGenericBoilerplate(u).filter((f) =>
+      /duplicate statement blocks/.test(f.evidence),
+    );
+    expect(dupBlocks).toEqual([]);
+    const clone = detectCopyPasteClone(u);
+    expect(clone.length).toBe(1);
+    expect(clone[0].category).toBe("copy_paste_clone");
+  });
+
+  it("does not double-count two blocks differing only in a do-while-body (fix-structuraltype-while-dowhile-switch-bare-constant)", () => {
+    const slop = `
+function a() {
+  do { doA(); } while (cond);
+  log("a");
+  log("b");
+  log("c");
+  log("d");
+}
+function b() {
+  do { doB(1); } while (cond);
+  log("a");
+  log("b");
+  log("c");
+  log("d");
+}
+`;
+    const u = unit(slop);
+    const dupBlocks = detectGenericBoilerplate(u).filter((f) =>
+      /duplicate statement blocks/.test(f.evidence),
+    );
+    expect(dupBlocks).toEqual([]);
+    const clone = detectCopyPasteClone(u);
+    expect(clone.length).toBe(1);
+    expect(clone[0].category).toBe("copy_paste_clone");
+  });
+
+  it("does not double-count two blocks differing only in a switch-case body (fix-structuraltype-while-dowhile-switch-bare-constant)", () => {
+    const slop = `
+function a() {
+  switch (cond) { case 1: doA(); }
+  log("a");
+  log("b");
+  log("c");
+  log("d");
+}
+function b() {
+  switch (cond) { case 1: doB(1); }
+  log("a");
+  log("b");
+  log("c");
+  log("d");
+}
+`;
+    const u = unit(slop);
+    const dupBlocks = detectGenericBoilerplate(u).filter((f) =>
+      /duplicate statement blocks/.test(f.evidence),
+    );
+    expect(dupBlocks).toEqual([]);
+    const clone = detectCopyPasteClone(u);
+    expect(clone.length).toBe(1);
+    expect(clone[0].category).toBe("copy_paste_clone");
+  });
+
+  // No regression on the legitimate exact-duplicate path: two STRUCTURALLY
+  // IDENTICAL while-body blocks still collide as a generic_boilerplate exact
+  // duplicate (they ARE exact duplicates — genericBoilerplate's domain), and
+  // copyPasteClone skips them as exact-ordered-identical. Counted once, by
+  // genericBoilerplate — not zero, not double.
+  it("still flags two structurally identical while-body blocks as a generic_boilerplate exact duplicate (no regression)", () => {
+    const slop = `
+function a() {
+  while (cond) { doA(); }
+  log("a");
+  log("b");
+  log("c");
+  log("d");
+}
+function b() {
+  while (cond) { doA(); }
+  log("a");
+  log("b");
+  log("c");
+  log("d");
+}
+`;
+    const u = unit(slop);
+    const dupBlocks = detectGenericBoilerplate(u).filter((f) =>
+      /duplicate statement blocks/.test(f.evidence),
+    );
+    expect(dupBlocks.length).toBe(1);
+    // copyPasteClone skips exact-ordered-identical pairs — genericBoilerplate's job.
+    const clone = detectCopyPasteClone(u);
+    expect(clone.length).toBe(0);
+  });
 });
 
 describe("detectPlausibleButWrong", () => {
