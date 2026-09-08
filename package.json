@@ -3,7 +3,7 @@
   "version": "0.15.0",
   "type": "module",
   "license": "Apache-2.0",
-  "description": "Zero-config CLI that audits a JS/TS repo for AI-generated code \"slop\" debt and emits a single SlopScore (0-100) plus a ranked file heatmap. 100% static, offline, deterministic.",
+  "description": "Audit JS/TS code with static heuristics, rank findings by file, and export a deterministic score with configurable CI thresholds.",
   "bin": {
     "slopaudit": "dist/cli.js"
   },

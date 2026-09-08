@@ -1,0 +1,90 @@
+{
+  "name": "SlopAudit",
+  "tagline": "Find code patterns that deserve a closer review.",
+  "architecture": {
+    "title": "Inside SlopAudit",
+    "nodes": [
+      {
+        "title": "Source inventory",
+        "detail": "src/scan/walk.ts"
+      },
+      {
+        "title": "Babel AST",
+        "detail": "src/scan/parse.ts"
+      },
+      {
+        "title": "Five detectors",
+        "detail": "src/detectors"
+      },
+      {
+        "title": "Density score",
+        "detail": "src/score/aggregate.ts"
+      },
+      {
+        "title": "Reports + gate",
+        "detail": "src/report; src/gate"
+      }
+    ],
+    "edges": [
+      [
+        0,
+        1
+      ],
+      [
+        1,
+        2
+      ],
+      [
+        2,
+        3
+      ],
+      [
+        3,
+        4
+      ]
+    ]
+  },
+  "process": {
+    "title": "From input to a useful result",
+    "steps": [
+      {
+        "title": "Scan fixture",
+        "detail": "Unreachable statement"
+      },
+      {
+        "title": "Inspect evidence",
+        "detail": "Line and category"
+      },
+      {
+        "title": "Remove dead statement",
+        "detail": "Rescan the same function"
+      }
+    ],
+    "result": "The unreachable statement triggers a finding and exit 1; removing it gives zero findings and exit 0."
+  },
+  "integrations": {
+    "title": "Supported input and output routes",
+    "items": [
+      {
+        "title": "JS / TS variants",
+        "detail": "Including JSX, TSX, MJS and CJS"
+      },
+      {
+        "title": "JSON",
+        "detail": "Machine-readable findings and score"
+      },
+      {
+        "title": "HTML + SVG",
+        "detail": "Local report and score badge"
+      },
+      {
+        "title": "GitHub annotations",
+        "detail": "Per-line workflow warnings"
+      },
+      {
+        "title": "Composite Action",
+        "detail": "Threshold and job summary"
+      }
+    ]
+  }
+}

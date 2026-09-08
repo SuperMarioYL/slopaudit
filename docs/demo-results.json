@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "source_revision": "278cd492a45d4c380820bbfffb01173303611daa",
+  "scope": "Static CLI audit of a complete handwritten JS fixture before and after removing unreachable code, including the --fail-on exit status. No target code runs.",
+  "steps": [
+    {
+      "label": "Recorded run",
+      "body": "Static CLI audit of a complete handwritten JS fixture before and after removing unreachable code, including the --fail-on exit status. No target code runs.",
+      "command": "python3 examples/presentation_demo.py",
+      "output": "{\n  \"state\": \"before\",\n  \"score\": 100,\n  \"band\": \"heavy\",\n  \"files\": 1,\n  \"findings\": [\n    {\n      \"line\": 3,\n      \"category\": \"plausible_but_wrong\",\n      \"evidence\": \"unreachable code after return\"\n    }\n  ],\n  \"exit_code\": 1\n}\n{\n  \"state\": \"after\",\n  \"score\": 0,\n  \"band\": \"clean\",\n  \"files\": 1,\n  \"findings\": [],\n  \"exit_code\": 0\n}"
+    }
+  ]
+}
