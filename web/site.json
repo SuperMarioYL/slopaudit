@@ -149,6 +149,10 @@
           "alt": {
             "en": "Follow the operation",
             "zh": "处理过程"
+          },
+          "mobile": {
+            "light": "/assets/presentation/process-mobile-light.svg",
+            "dark": "/assets/presentation/process-mobile-dark.svg"
           }
         }
       },
@@ -167,6 +171,10 @@
           "alt": {
             "en": "Inside SlopAudit",
             "zh": "SlopAudit 的内部流程"
+          },
+          "mobile": {
+            "light": "/assets/presentation/architecture-mobile-light.svg",
+            "dark": "/assets/presentation/architecture-mobile-dark.svg"
           }
         }
       },
@@ -185,6 +193,10 @@
           "alt": {
             "en": "Connect the pieces",
             "zh": "输入与输出"
+          },
+          "mobile": {
+            "light": "/assets/presentation/integrations-mobile-light.svg",
+            "dark": "/assets/presentation/integrations-mobile-dark.svg"
           }
         }
       }
@@ -213,5 +225,17 @@
       }
     ]
   },
-  "content_version": "v0.15.0"
+  "content_version": "v0.15.0",
+  "changelog": [
+    {
+      "version": "v0.15.0",
+      "date": "2026-09-01",
+      "note": "fix-only release. (1) fix-structuraltype-while-dowhile-switch-bare-constant: genericBoilerplate's structuralType left WhileStatement/DoWhileStatement/SwitchStatement as a bare constant, so two blocks differing only in a while/do-while/switch body were double-counted (generic_boilerplate exact-duplicate + copy_paste_clone near-duplicate) — a false-red at --fail-on, in arms the v0.14.0 fix missed; now recurses like If/For*. (2) fix-version-drift-package-json-lags-version-file: at v0.14.0 package.json said 0.13.0 while the VERSION file said v0.14.0, so slopaudit --version misreported 0.13.0; package.json is now bumped to the release version and a lockstep test pins the two surfaces. SlopScore is more accurate: no double-counted loop/switch-body block pairs."
+    },
+    {
+      "version": "v0.14.0",
+      "date": "2026-08-24",
+      "note": "refresh: content re-verified for v0.14.0 (fix-double-count-copy-paste-vs-boilerplate + fix-walk-dot-true-collects-generated-dot-dirs — SlopScore is now more accurate: no double-counted block pairs, no false-clean from generated dot-dirs)."
+    }
+  ]
 }
