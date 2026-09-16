@@ -142,11 +142,10 @@ function normalizeBlock(stmts: any[]): string | null {
  * internal structure collided as a generic_boilerplate "exact duplicate block" while
  * copyPasteClone's own deeper `structuralSig` still saw the difference and
  * flagged the pair as a near-duplicate — the same block pair was
- * double-counted (a false-red at `--fail-on`). The arms now recurse
- * (structure-only, names+literals dropped) so two blocks collide only when
- * structurally identical; near-duplicates stay copyPasteClone's exclusive
- * domain. The expression shape stays shallow — the file's existing convention,
- * matching the depth ExpressionStatement/ReturnStatement already use.
+ * double-counted (a false-red at `--fail-on`). Recursing those arms
+ * (structure-only, names+literals dropped) was the first step; see
+ * fix-structuraltype-shallow-arms-double-count below for the root-cause fix
+ * that made the fingerprint uniformly structure-only.
  *
  * fix-structuraltype-while-dowhile-switch-bare-constant: the v0.14.0 fix recursed
  * If, For-star, Throw and Try but left WhileStatement, DoWhileStatement and SwitchStatement
@@ -154,65 +153,57 @@ function normalizeBlock(stmts: any[]): string | null {
  * differing only in a while / do-while / switch body still collided as an exact
  * duplicate here while copyPasteClone's deeper `structuralSig` saw the body
  * difference and flagged a near-duplicate — the same double-count, in arms the
- * v0.14.0 fix missed. While, DoWhile and Switch now recurse (body + test, or the
- * discriminant + each case's consequent statements) the same way For and If do.
+ * v0.14.0 fix missed.
+ *
+ * fix-structuraltype-shallow-arms-double-count: even with every statement arm
+ * recursing, the fingerprint was still lossy in the arms no fix ever touched —
+ * exprShape collapsed CallExpression to `Call/<argc>` (callee + every argument to
+ * their bare node type) and MemberExpression to bare "Member", VariableDeclaration
+ * to a bare `V<count>`, and every node type without an explicit arm to
+ * `default: return node.type`. Two blocks differing only in the depth of a call
+ * argument chain (`save(a.b.c.d)` vs `save(e)`) or in a declaration initializer's
+ * shape (`const cfg = {...}` vs `const cfg = loadConfig()`) collided here as an
+ * "exact duplicate" while copyPasteClone's deep `structuralSig` still saw the
+ * difference and flagged the same pair as a near-duplicate — the block pair
+ * double-counted (gb=1 + cp=1), inflating the SlopScore (a false-red at
+ * `--fail-on`). The root cause is TWO disagreeing equivalence relations: a
+ * hand-tuned shallow shape here vs a uniform deep fingerprint there, so the
+ * fingerprint is now the SAME uniform structure-only recursion `structuralSig`
+ * implements — node type + every object child's fingerprint, every scalar
+ * (names, literals, operators) dropped, loc/offset/comment keys skipped. gb and
+ * cp now agree by construction: any pair gb calls an exact duplicate is
+ * orderedSig-equal to copyPasteClone, whose exact-clone skip fires, so
+ * near-duplicates stay copyPasteClone's exclusive domain and can never be
+ * double-counted again — no arm-by-arm whack-a-mole. Renamed clones still
+ * collide (scalars dropped), preserving legitimate copy-paste detection.
  */
 function structuralType(node: any): string {
-  if (!node || typeof node.type !== "string") return "?";
-  switch (node.type) {
-    case "ExpressionStatement":
-      return `E(${exprShape(node.expression)})`;
-    case "ReturnStatement":
-      return `R(${node.argument ? exprShape(node.argument) : ""})`;
-    case "IfStatement":
-      return `If(${exprShape(node.test)};${structuralType(node.consequent)}${
-        node.alternate ? `;${structuralType(node.alternate)}` : ""
-      })`;
-    case "VariableDeclaration":
-      return `V${node.declarations?.length ?? 0}`;
-    case "ThrowStatement":
-      return `Throw(${exprShape(node.argument)})`;
-    case "TryStatement":
-      return `Try(${structuralType(node.block)}${
-        node.handler ? `;${normalizeCatch(node.handler)}` : ""
-      }${node.finalizer ? `;${structuralType(node.finalizer)}` : ""})`;
-    case "ForStatement":
-      return `For(${structuralType(node.body)};${exprShape(node.test)})`;
-    case "ForOfStatement":
-    case "ForInStatement":
-      return `ForOf(${structuralType(node.body)};${exprShape(node.right)})`;
-    case "WhileStatement":
-      return `While(${structuralType(node.body)};${exprShape(node.test)})`;
-    case "DoWhileStatement":
-      return `DoWhile(${structuralType(node.body)};${exprShape(node.test)})`;
-    case "SwitchStatement":
-      return `Switch(${exprShape(node.discriminant)};${(node.cases ?? [])
-        .map((c: any) => (c.consequent ?? []).map(structuralType).join(","))
-        .join(";")})`;
-    case "AwaitExpression":
-      return "Await";
-    case "BlockStatement":
-      return `{${(node.body ?? []).map(structuralType).join(";")}}`;
-    default:
-      return node.type;
+  if (Array.isArray(node)) return `[${node.map(structuralType).join(",")}]`;
+  if (!node || typeof node !== "object" || typeof node.type !== "string") return "?";
+  const parts: string[] = [node.type];
+  for (const key of Object.keys(node).sort()) {
+    if (SHAPE_SKIP_KEYS.has(key)) continue;
+    const child = (node as any)[key];
+    if (child && typeof child === "object") parts.push(structuralType(child));
   }
+  return `(${parts.join("|")})`;
 }
 
-function exprShape(expr: any): string {
-  if (!expr || typeof expr.type !== "string") return "?";
-  switch (expr.type) {
-    case "CallExpression":
-      return `Call/${expr.arguments?.length ?? 0}`;
-    case "AssignmentExpression":
-      return "Assign";
-    case "AwaitExpression":
-      return `Await(${exprShape(expr.argument)})`;
-    case "MemberExpression":
-      return "Member";
-    default:
-      return expr.type;
-  }
-}
+/**
+ * Keys excluded from the structural fingerprint: source positions and comment
+ * attachments carry no structure (mirrors copyPasteClone's SKIP_KEYS).
+ */
+const SHAPE_SKIP_KEYS = new Set([
+  "loc",
+  "start",
+  "end",
+  "range",
+  "leadingComments",
+  "trailingComments",
+  "innerComments",
+  "comments",
+  "extra",
+]);
 
 const PLACEHOLDER_RE = /\b(TODO|FIXME|XXX|HACK|placeholder|implement me|fill( this)? in|stub|coming soon|not implemented)\b/i;
 

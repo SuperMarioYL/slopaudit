@@ -67,6 +67,17 @@ interface RunOptions {
  * Read + parse a single file into a FileUnit, or null if it can't be read.
  * parse.ts uses errorRecovery so a parse never throws; a soft error is logged
  * to stderr but the unit is still produced with whatever AST was recovered.
+ *
+ * fix-parse-failure-units-counted-as-scanned: a HARD parse failure (parseFile
+ * returned `ast: null`) produces a unit every detector returns [] for, so the
+ * file contributed zero findings while its lines still inflated linesScanned
+ * and filesScanned counted a file that was never audited — diluting the
+ * per-100-lines density toward a false-clean PASS, and letting a tree whose
+ * ONLY source file is unparseable report a pristine 0/100 (clean) green at
+ * `--fail-on clean` (the v0.3.0 empty-scan guard only fires at
+ * filesScanned === 0). The unit is now dropped; the parse warning already went
+ * to stderr, and runAudit reports the unparseable count in the nothing-audited
+ * message.
  */
 async function loadUnit(filePath: string): Promise<FileUnit | null> {
   let code: string;
@@ -79,29 +90,46 @@ async function loadUnit(filePath: string): Promise<FileUnit | null> {
   if (error) {
     process.stderr.write(`slopaudit: parse warning for ${filePath}: ${error}\n`);
   }
+  if (!ast) return null; // hard parse failure — nothing was audited in this file
   return { file: filePath, code, lineCount, ast };
 }
 
-async function collectUnits(root: string, extraIgnores: string[] = []): Promise<FileUnit[]> {
+/**
+ * The walked files plus how many were found but dropped as unparseable (hard
+ * parse failure). fix-parse-failure-units-counted-as-scanned: runAudit needs
+ * the count so its zero-scan error can say "found but none could be parsed"
+ * instead of "no JS/TS source files found".
+ */
+interface CollectedUnits {
+  units: FileUnit[];
+  unparseable: number;
+}
+
+async function collectUnits(
+  root: string,
+  extraIgnores: string[] = [],
+): Promise<CollectedUnits> {
   const files = await walk(root, extraIgnores);
   const units: FileUnit[] = [];
+  let unparseable = 0;
   for (const f of files) {
     const unit = await loadUnit(f);
     if (unit) units.push(unit);
+    else unparseable++;
   }
-  return units;
+  return { units, unparseable };
 }
 
 async function runList(rootArg: string, opts: RunOptions): Promise<void> {
   const root = resolve(rootArg);
-  const units = await collectUnits(root, opts.ignore ?? []);
+  const { units } = await collectUnits(root, opts.ignore ?? []);
   const inventory = units.map((u) => ({ file: u.file, lineCount: u.lineCount }));
   process.stdout.write(renderInventory(inventory) + "\n");
 }
 
 async function runAudit(rootArg: string, opts: RunOptions): Promise<void> {
   const root = resolve(rootArg);
-  const units = await collectUnits(root, opts.ignore ?? []);
+  const { units, unparseable } = await collectUnits(root, opts.ignore ?? []);
 
   const findings: SlopFinding[] = [];
   let linesScanned = 0;
@@ -130,12 +158,19 @@ async function runAudit(rootArg: string, opts: RunOptions): Promise<void> {
   // error (exit 2) rather than a pristine pass. In --json mode we still emit the
   // empty score first so machine consumers see filesScanned: 0, then exit 2
   // without applying the gate (there is nothing to gate on).
+  //
+  // fix-parse-failure-units-counted-as-scanned: unparseable files no longer
+  // count toward filesScanned, so a tree whose only source file fails to parse
+  // lands here too instead of reporting a pristine 0/100 green that passes even
+  // `--fail-on clean` while nothing was audited. Say which case it was.
   if (score.filesScanned === 0) {
     if (opts.json) {
       process.stdout.write(JSON.stringify(score, null, 2) + "\n");
     }
     process.stderr.write(
-      `slopaudit: no JS/TS source files found under ${root} — nothing audited\n`,
+      unparseable > 0
+        ? `slopaudit: ${unparseable} JS/TS file(s) found under ${root} but none could be parsed — nothing audited\n`
+        : `slopaudit: no JS/TS source files found under ${root} — nothing audited\n`,
     );
     process.exitCode = 2;
     return;

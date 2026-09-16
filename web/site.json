@@ -11,7 +11,7 @@
   "meta": {
     "visual_style": "neon-particle",
     "demo_source": "docs/demo-results.json",
-    "content_version": "v0.15.0"
+    "content_version": "v0.16.0"
   },
   "hero": {
     "headline": {
@@ -225,8 +225,13 @@
       }
     ]
   },
-  "content_version": "v0.15.0",
+  "content_version": "v0.16.0",
   "changelog": [
+    {
+      "version": "v0.16.0",
+      "date": "2026-09-16",
+      "note": "fix-only release. (1) fix-structuraltype-shallow-arms-double-count: structuralType was still lossy in the arms no fix ever reached (exprShape collapsed CallExpression to Call/<argc> and MemberExpression to bare Member, VariableDeclaration to V<count>, everything else to a bare node-type constant), so block pairs differing only in a call argument chain's depth or a declaration initializer's shape were double-counted (generic_boilerplate exact-duplicate + copy_paste_clone near-duplicate) — a false-red at --fail-on; the fingerprint is now uniformly structure-only (the same recursion as copyPasteClone's structuralSig), so the two detectors agree by construction and double-counting is impossible. (2) fix-parse-failure-units-counted-as-scanned: unparseable files no longer count toward filesScanned/linesScanned — an all-unparseable tree exits 2 (nothing audited) instead of a pristine 0/100 green that passed even --fail-on clean, and mixed trees score only genuinely audited lines. (3) fix-changelog-missing-0-14-0-entry: the shipped v0.14.0 release had no CHANGELOG entry at its own tag or since; backfilled in descending order."
+    },
     {
       "version": "v0.15.0",
       "date": "2026-09-01",

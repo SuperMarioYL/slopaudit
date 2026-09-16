@@ -253,6 +253,99 @@ function b() {
     const clone = detectCopyPasteClone(u);
     expect(clone.length).toBe(0);
   });
+
+  // v0.16.0 fix-structuraltype-shallow-arms-double-count: even with every
+  // statement arm recursing, exprShape collapsed CallExpression to `Call/<argc>`
+  // (callee + every argument to their bare node type) and MemberExpression to
+  // bare "Member", so two blocks differing only in the DEPTH of a call argument
+  // chain collided as a generic_boilerplate "exact duplicate" while
+  // copyPasteClone's deep structuralSig saw the difference and flagged the pair
+  // as a near-duplicate — the same block pair counted twice (gb=1 + cp=1).
+  // structuralType is now a uniform structure-only fingerprint, so the pair no
+  // longer collides here. Fails on the shallow `Call/1` collapse (gb=1); passes
+  // after (gb=0, one copy_paste_clone finding across both detectors).
+  it("does not double-count two blocks differing only in a call argument's member-chain depth (fix-structuraltype-shallow-arms-double-count)", () => {
+    const slop = `
+function a() {
+  setup();
+  log();
+  save(a.b.c.d);
+  finish(x);
+}
+function b() {
+  setup();
+  log();
+  save(e);
+  finish(y);
+}
+`;
+    const u = unit(slop);
+    const dupBlocks = detectGenericBoilerplate(u).filter((f) =>
+      /duplicate statement blocks/.test(f.evidence),
+    );
+    expect(dupBlocks).toEqual([]);
+    const clone = detectCopyPasteClone(u);
+    expect(clone.length).toBe(1);
+    expect(clone[0].category).toBe("copy_paste_clone");
+  });
+
+  // v0.16.0 fix-structuraltype-shallow-arms-double-count: VariableDeclaration
+  // collapsed to a bare `V<count>` (declarations counted, initializers ignored),
+  // so two blocks differing only in a declaration initializer's shape collided
+  // as an exact duplicate here while copyPasteClone flagged the near-duplicate.
+  // Same assertion: not double-counted (gb=0, cp=1).
+  it("does not double-count two blocks differing only in a declaration initializer's shape (fix-structuraltype-shallow-arms-double-count)", () => {
+    const slop = `
+function a() {
+  setup();
+  log();
+  const cfg = { retries: 3, backoff: "exp" };
+  finish(x);
+}
+function b() {
+  setup();
+  log();
+  const cfg = loadConfig();
+  finish(y);
+}
+`;
+    const u = unit(slop);
+    const dupBlocks = detectGenericBoilerplate(u).filter((f) =>
+      /duplicate statement blocks/.test(f.evidence),
+    );
+    expect(dupBlocks).toEqual([]);
+    const clone = detectCopyPasteClone(u);
+    expect(clone.length).toBe(1);
+    expect(clone[0].category).toBe("copy_paste_clone");
+  });
+
+  // No regression on the legitimate exact-duplicate path under the uniform
+  // fingerprint: two blocks that differ ONLY in identifier names/literals still
+  // collide as a generic_boilerplate exact duplicate (scalars are dropped), and
+  // copyPasteClone skips them as exact-ordered-identical.
+  it("still flags renamed-only blocks as a generic_boilerplate exact duplicate under the uniform fingerprint (no regression)", () => {
+    const slop = `
+function a() {
+  setup();
+  log();
+  save(a.b.c.d);
+  finish(x);
+}
+function b() {
+  setup();
+  log();
+  save(p.q.r.s);
+  finish(z);
+}
+`;
+    const u = unit(slop);
+    const dupBlocks = detectGenericBoilerplate(u).filter((f) =>
+      /duplicate statement blocks/.test(f.evidence),
+    );
+    expect(dupBlocks.length).toBe(1);
+    const clone = detectCopyPasteClone(u);
+    expect(clone.length).toBe(0);
+  });
 });
 
 describe("detectPlausibleButWrong", () => {

@@ -11,6 +11,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Hosted team tier: SlopScore *history* across org repos, delta-vs-main gating, leadership dashboard.
 - Additional language detectors (Python / Go / Rust) behind the existing pure-function detector seam.
 
+## [0.16.0] - 2026-09-16
+
+Fix-only release. Three verified correctness fixes — no new detector, band,
+primitive, or runtime dependency. All three are grounded in reproducible
+defects in the shipped v0.15.0 source and guarded by regression tests.
+
+### Fixed
+- **Stop double-counting a copy-pasted block pair whose difference hides in a
+  call argument chain or a declaration initializer**
+  (`src/detectors/genericBoilerplate.ts`,
+  `fix-structuraltype-shallow-arms-double-count`). Even after the v0.14.0 and
+  v0.15.0 arm-by-arm fixes, `structuralType` was still lossy where no fix ever
+  reached: `exprShape` collapsed `CallExpression` to `Call/<argc>` (callee and
+  every argument to their bare node type) and `MemberExpression` to bare
+  "Member", `VariableDeclaration` to a bare `V<count>`, and every node type
+  without an explicit arm to a bare `default: return node.type`. Two blocks
+  differing only in the depth of a call argument chain (`save(a.b.c.d)` vs
+  `save(e)`) or in a declaration initializer's shape (`const cfg = {...}` vs
+  `const cfg = loadConfig()`) collided as a `generic_boilerplate` "exact
+  duplicate block" while `copyPasteClone`'s deep `structuralSig` still saw the
+  difference and flagged the same pair as a near-duplicate — the pair counted
+  twice, inflating the SlopScore (a false red at `--fail-on`). The root cause
+  is two disagreeing equivalence relations, so `structuralType` is now the
+  SAME uniform structure-only recursion `structuralSig` implements: node type
+  + every object child's fingerprint, every scalar (names, literals,
+  operators) dropped. `gb` and `cp` now agree by construction — a pair
+  genericBoilerplate calls an exact duplicate is orderedSig-equal to
+  copyPasteClone, whose exact-clone skip fires — so near-duplicates stay
+  `copyPasteClone`'s exclusive domain and can never be double-counted again.
+  Renamed-only clones still collide (the legitimate match path).
+- **Unparseable files are no longer counted as scanned**
+  (`src/cli.ts`, `fix-parse-failure-units-counted-as-scanned`). `loadUnit`
+  pushed a unit even when `parseFile` hard-failed (`ast: null`), so the file
+  contributed zero findings while its lines inflated `linesScanned` (density
+  dilution toward a false-clean PASS) and `filesScanned` counted a file that
+  was never audited — letting a tree whose ONLY source file is unparseable
+  report a pristine `{"score":0,"band":"clean","filesScanned":1}` and exit 0
+  even at `--fail-on clean`, defeating the v0.3.0 empty-scan guard. Hard
+  parse failures are now dropped from the scan; an all-unparseable tree
+  exits 2 ("N JS/TS file(s) found under … but none could be parsed — nothing
+  audited") exactly like the no-files case, and a mixed tree's
+  filesScanned/linesScanned count only genuinely audited files. Soft parse
+  errors (errorRecovery produced an AST) keep the existing behavior.
+- **Backfill the missing [0.14.0] changelog entry** (`CHANGELOG.md`,
+  `fix-changelog-missing-0-14-0-entry`). v0.14.0 — a real shipped release
+  (tag v0.14.0, published 2026-08-23) — had no entry at its own tag and at
+  every tag since: the header list jumped [0.15.0] straight to [0.13.0],
+  breaking the changelog's all-notable-changes contract. The [0.14.0]
+  section (fix-double-count-copy-paste-vs-boilerplate +
+  fix-walk-dot-true-collects-generated-dot-dirs) is now inserted in
+  descending version order; no existing entries were altered.
+
 ## [0.15.0] - 2026-09-01
 
 Fix-only release. Two verified correctness fixes — no new detector, band,
@@ -44,6 +96,38 @@ the shipped v0.14.0 source and guarded by regression tests.
   (`test/version.test.ts`) asserts the `VERSION` release marker (leading `v`
   stripped) equals `package.json`'s `version`, so the two surfaces can never
   silently drift again.
+
+## [0.14.0] - 2026-08-23
+
+Fix-only release (backfilled in v0.16.0 — this entry was missing at the
+v0.14.0 tag and every tag since, breaking the changelog's
+all-notable-changes contract for a shipped release). Two verified correctness
+fixes — no new detector, band, primitive, or runtime dependency.
+
+### Fixed
+- **Stop double-counting a copy-pasted block pair whose only difference is an
+  if/for/throw/try arm** (`src/detectors/genericBoilerplate.ts`,
+  `fix-double-count-copy-paste-vs-boilerplate`). `structuralType`'s
+  IfStatement, ForStatement/ForOfStatement/ForInStatement, ThrowStatement and
+  TryStatement arms collapsed to bare constants ("If" / "For" / "Throw" /
+  "Try"), so two statement blocks that differed only inside one of those arms
+  collided as a `generic_boilerplate` "exact duplicate block" while
+  `copyPasteClone`'s deeper `structuralSig` still saw the difference and
+  flagged the same pair as a `copy_paste_clone` near-duplicate — the pair was
+  counted twice, inflating totalWeight and the SlopScore and able to flip a
+  clean-ish repo over `--fail-on moderate|heavy` (a false red in the headline
+  CI gate). The arms now recurse so two blocks collide only when structurally
+  identical; near-duplicates stay `copyPasteClone`'s exclusive domain.
+- **Stop `dot: true` from collecting generated dot-directories**
+  (`src/scan/walk.ts`, `fix-walk-dot-true-collects-generated-dot-dirs`). The
+  v0.11.0 `dot: true` change (re-include real dotfile source configs such as
+  `.eslintrc.cjs`) also made fast-glob descend into generated dot-DIRECTORIES
+  missing from the ignore list — `.docusaurus/`, `.stryker-tmp/`,
+  `.rollup.cache/`. Their generated JS was collected and audited as executable
+  source, inflating `linesScanned` and diluting the per-100-lines density so
+  the SlopScore was dragged toward a false-clean PASS. Those directories are
+  now excluded next to the named build dirs, keeping `dot: true` re-including
+  only real dotfile source configs.
 
 ## [0.13.0] - 2026-08-19
 
