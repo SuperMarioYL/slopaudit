@@ -112,14 +112,14 @@ node dist/cli.js ./src --format github
 
 ## Configuration
 
---fail-on accepts a score 0–100 or clean/moderate/heavy and fails at or above that threshold. Bands are clean below 34, moderate through 66 and heavy from 67. Exit 1 means the gate tripped; an empty scan or invalid threshold gives 2. --list inventories files and cannot be combined with --fail-on. Default text mode writes slopaudit-report.html and slopaudit-badge.svg in the current directory; --json does not. The Action exposes path, fail-on, version and newline-separated ignore inputs; pin the version deliberately.
+--fail-on accepts a score 0–100 or clean/moderate/heavy and fails at or above that threshold. Bands are clean below 34, moderate through 66 and heavy from 67. Exit 1 means the gate tripped; an empty scan or invalid threshold gives 2, as does an unrecognized --format. --list inventories files and cannot be combined with --fail-on, --json or --format. Default text mode writes slopaudit-report.html and slopaudit-badge.svg in the current directory; --json does not. The Action exposes path, fail-on, version and newline-separated ignore inputs; pin the version deliberately.
 
 ```yaml
 - uses: actions/checkout@v4
-- uses: SuperMarioYL/slopaudit@v0.15.0
+- uses: SuperMarioYL/slopaudit@v0.17.0
   with:
     path: .
-    version: "0.15.0"
+    version: "0.17.0"
     fail-on: heavy
     ignore: |
       examples/**

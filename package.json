@@ -1,6 +1,6 @@
 {
   "name": "slopaudit",
-  "version": "0.16.0",
+  "version": "0.17.0",
   "type": "module",
   "license": "Apache-2.0",
   "description": "Audit JS/TS code with static heuristics, rank findings by file, and export a deterministic score with configurable CI thresholds.",

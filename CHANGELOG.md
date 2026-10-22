@@ -11,6 +11,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Hosted team tier: SlopScore *history* across org repos, delta-vs-main gating, leadership dashboard.
 - Additional language detectors (Python / Go / Rust) behind the existing pure-function detector seam.
 
+## [0.17.0] - 2026-10-23
+
+Fix-only release. Three verified CLI-contract fixes — no new detector, band,
+primitive, or runtime dependency. All three are grounded in behaviour reproduced
+against the shipped v0.16.0 build and guarded by regression tests.
+
+### Fixed
+- **Reject an unrecognized `--format` value instead of silently running the
+  default text report** (`src/cli.ts`, `fix-unknown-format-silently-ignored`).
+  `--format` is a closed set — `github` is the only format implemented — but the
+  option had no value validation and its only consumer was the equality test
+  `opts.format === "github"`, so any other value (`--format github-actions`, or
+  `--format json` confused with the separate `--json` flag) fell through to the
+  default text path: the human report was printed, `slopaudit-report.html` and
+  `slopaudit-badge.svg` were written into the current directory, and the run
+  exited 0. A CI step that asked for a machine format therefore reported success
+  while producing the wrong artifact and mutating the workspace. The value is now
+  resolved up front (trimmed and case-folded like `--fail-on`) and anything
+  outside the accepted set is a usage error — stderr message plus exit 2.
+- **Reject `--json` / `--format` combined with `--list` instead of silently
+  ignoring them** (`src/cli.ts`, `fix-list-json-silently-dropped`). The `--list`
+  branch guarded only `--fail-on`, so `--list --json` printed the text inventory,
+  emitted no JSON and exited 0 — the same silent-drop class the earlier
+  `fix-list-ignores-fail-on` closed. The guard now covers `--json` and `--format`
+  as well and names every offending flag in one message.
+- **Bump the README Action example off v0.15.0 and pin it against the release
+  version mechanically** (`README.md`, `README.zh-CN.md`, `test/version.test.ts`,
+  `fix-readme-action-example-version-drift`). Both READMEs' copy-paste Action
+  example pinned `uses: SuperMarioYL/slopaudit@v0.15.0` with `version: "0.15.0"`
+  while every shipped v0.16.0 surface said 0.16.0, so a user following the README
+  pinned an Action ref and an npm CLI two tags behind the release the README
+  documents. The example now tracks the release version, and the version-lockstep
+  test covers the README Action ref, the README `version` input, `web/site.json`'s
+  content version and the presence of a CHANGELOG entry for the current version —
+  so this drift can no longer ship silently.
+
 ## [0.16.0] - 2026-09-16
 
 Fix-only release. Three verified correctness fixes — no new detector, band,

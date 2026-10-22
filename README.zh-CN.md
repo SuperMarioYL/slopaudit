@@ -112,14 +112,14 @@ node dist/cli.js ./src --format github
 
 ## 配置
 
---fail-on 接受 0–100 分数或 clean/moderate/heavy，到达或超过阈值即失败。低于 34 为 clean，至 66 为 moderate，67 起为 heavy。门禁触发返回 1；空扫描或无效阈值返回 2。--list 只列文件，不能与 --fail-on 组合。默认文本模式在当前目录写 slopaudit-report.html 和 slopaudit-badge.svg，--json 不写。Action 支持 path、fail-on、version 与按行分隔的 ignore，应明确固定版本。
+--fail-on 接受 0–100 分数或 clean/moderate/heavy，到达或超过阈值即失败。低于 34 为 clean，至 66 为 moderate，67 起为 heavy。门禁触发返回 1；空扫描、无效阈值或无法识别的 --format 返回 2。--list 只列文件，不能与 --fail-on、--json 或 --format 组合。默认文本模式在当前目录写 slopaudit-report.html 和 slopaudit-badge.svg，--json 不写。Action 支持 path、fail-on、version 与按行分隔的 ignore，应明确固定版本。
 
 ```yaml
 - uses: actions/checkout@v4
-- uses: SuperMarioYL/slopaudit@v0.15.0
+- uses: SuperMarioYL/slopaudit@v0.17.0
   with:
     path: .
-    version: "0.15.0"
+    version: "0.17.0"
     fail-on: heavy
     ignore: |
       examples/**

@@ -33,3 +33,53 @@ describe("version lockstep (fix-version-drift-package-json-lags-version-file)", 
     expect(versionFile.replace(/^v/, "")).toBe(pkg.version);
   });
 });
+
+/**
+ * fix-readme-action-example-version-drift: at the shipped v0.16.0 tag both READMEs'
+ * copy-paste Action example still pinned the PREVIOUS release —
+ * `uses: SuperMarioYL/slopaudit@v0.15.0` with `version: "0.15.0"` — while VERSION,
+ * package.json and web/site.json all said 0.16.0. The drift was introduced by the
+ * v0.16.0 docs refresh and nothing caught it: the block above pins only VERSION
+ * against package.json. These cases extend the same lockstep contract to the
+ * remaining user-facing surfaces that quote the release version, so a docs refresh
+ * can no longer ship a stale pin.
+ */
+const READMES = ["README.md", "README.zh-CN.md"] as const;
+const version = versionFile.trim();
+const bareVersion = version.replace(/^v/, "");
+
+function readmeText(name: string): string {
+  return readFileSync(join(root, name), "utf8");
+}
+
+describe("version lockstep across user-facing surfaces (fix-readme-action-example-version-drift)", () => {
+  for (const name of READMES) {
+    it(`${name} pins the Action ref to the release version`, () => {
+      const m = readmeText(name).match(
+        /-\s*uses:\s*SuperMarioYL\/slopaudit@v(\d+\.\d+\.\d+)/,
+      );
+      expect(m, `${name} has no Action example pinning a version`).not.toBeNull();
+      expect(m![1]).toBe(bareVersion);
+    });
+
+    it(`${name} pins the Action version input to the release version`, () => {
+      const m = readmeText(name).match(/\n\s*version:\s*"(\d+\.\d+\.\d+)"/);
+      expect(m, `${name} has no Action version input`).not.toBeNull();
+      expect(m![1]).toBe(bareVersion);
+    });
+  }
+
+  it("web/site.json's content version matches the release version", () => {
+    const site = JSON.parse(readFileSync(join(root, "web", "site.json"), "utf8")) as {
+      content_version?: string;
+      meta?: { content_version?: string };
+    };
+    expect(site.meta?.content_version).toBe(version);
+    expect(site.content_version).toBe(version);
+  });
+
+  it("CHANGELOG.md documents the release version", () => {
+    const changelog = readFileSync(join(root, "CHANGELOG.md"), "utf8");
+    expect(changelog).toContain(`## [${bareVersion}]`);
+  });
+});

@@ -11,7 +11,7 @@
   "meta": {
     "visual_style": "neon-particle",
     "demo_source": "docs/demo-results.json",
-    "content_version": "v0.16.0"
+    "content_version": "v0.17.0"
   },
   "hero": {
     "headline": {
@@ -225,8 +225,13 @@
       }
     ]
   },
-  "content_version": "v0.16.0",
+  "content_version": "v0.17.0",
   "changelog": [
+    {
+      "version": "v0.17.0",
+      "date": "2026-10-23",
+      "note": "fix-only release. (1) fix-unknown-format-silently-ignored: an unrecognized --format value used to fall through to the default text report, writing slopaudit-report.html + slopaudit-badge.svg and exiting 0, so a CI step that asked for a machine format silently got human output; --format is now a closed set (github) and anything else is a usage error (exit 2). (2) fix-list-json-silently-dropped: --json (and --format) combined with --list were silently ignored while the run exited 0; the existing --list guard now rejects them too, mirroring --fail-on. (3) fix-readme-action-example-version-drift: both READMEs pinned the Action example at v0.15.0 while every shipped surface was v0.16.0; they now track the release version and a lockstep test pins them mechanically."
+    },
     {
       "version": "v0.16.0",
       "date": "2026-09-16",

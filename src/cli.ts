@@ -53,6 +53,47 @@ function collectIgnore(value: string, previous: string[]): string[] {
   return previous.concat(value);
 }
 
+/**
+ * fix-unknown-format-silently-ignored: `--format` is a closed set — `github` is
+ * the only output format implemented (the m7 inline-annotation emitter). The
+ * option previously had no value validation and a single consumer
+ * (`opts.format === "github"` in runAudit), so any other value — a typo like
+ * `--format github-actions`, or `--format json` confused with the separate
+ * `--json` flag — fell straight through to the default text path, which printed
+ * the human report, wrote slopaudit-report.html + slopaudit-badge.svg into the
+ * cwd and exited 0. A CI step that asked for a machine format therefore
+ * reported success while producing the wrong artifact and mutating the
+ * workspace. Resolve the value up front and treat an unrecognized one as a
+ * usage error (exit 2), exactly like an invalid `--fail-on` threshold.
+ */
+const KNOWN_FORMATS = ["github"] as const;
+type OutputFormat = (typeof KNOWN_FORMATS)[number];
+
+class InvalidFormatError extends Error {
+  constructor(raw: string) {
+    super(
+      `invalid --format value "${raw}": expected one of ` +
+        `${KNOWN_FORMATS.join("|")} (omit the flag for the default text report)`,
+    );
+    this.name = "InvalidFormatError";
+  }
+}
+
+/**
+ * Resolve `--format` to a known output format, or `undefined` when the flag was
+ * omitted (default text report). Throws `InvalidFormatError` for anything else.
+ * Trimmed + case-folded like `resolveThreshold`, so the two value options share
+ * one convention.
+ */
+function resolveFormat(raw: string | undefined): OutputFormat | undefined {
+  if (raw === undefined) return undefined;
+  const normalized = raw.trim().toLowerCase();
+  if ((KNOWN_FORMATS as readonly string[]).includes(normalized)) {
+    return normalized as OutputFormat;
+  }
+  throw new InvalidFormatError(raw);
+}
+
 interface RunOptions {
   json?: boolean;
   html?: boolean; // commander: --no-html => html === false
@@ -257,7 +298,7 @@ program
   .option("--json", "print the SlopScore as JSON to stdout (for CI)")
   .option(
     "--format <format>",
-    "output format: 'github' emits a GitHub Actions ::warning workflow command per finding (inline per-line PR annotations)",
+    "output format: only 'github' is accepted — it emits a GitHub Actions ::warning workflow command per finding (inline per-line PR annotations); omit the flag for the default text report",
   )
   .option("--no-html", "skip writing slopaudit-report.html")
   .option("--no-badge", "skip writing slopaudit-badge.svg")
@@ -274,22 +315,46 @@ program
   )
   .action(async (path: string, opts: RunOptions) => {
     try {
+      // fix-unknown-format-silently-ignored: resolve --format before anything
+      // else so an unrecognized value is a usage error instead of a silent
+      // fall-through to the default text report.
+      let format: OutputFormat | undefined;
+      try {
+        format = resolveFormat(opts.format);
+      } catch (err) {
+        if (err instanceof InvalidFormatError) {
+          process.stderr.write(`slopaudit: ${err.message}\n`);
+          process.exitCode = 2;
+          return;
+        }
+        throw err;
+      }
+
       if (opts.list) {
-        // fix-list-ignores-fail-on: --list only prints the inventory and never
-        // evaluates the gate, so a `--list --fail-on …` step looks like it gates
-        // but silently doesn't. Reject the combination as a usage error (exit 2)
-        // rather than dropping --fail-on on the floor.
-        if (opts.failOn !== undefined) {
+        // fix-list-ignores-fail-on / fix-list-json-silently-dropped: --list only
+        // prints the inventory and never evaluates the gate, emits JSON, or
+        // applies --format, so a `--list --fail-on …` / `--list --json …` step
+        // looks like it gates or parses but silently doesn't. Reject the
+        // combination as a usage error (exit 2) rather than dropping the flag on
+        // the floor.
+        const ignored = [
+          opts.failOn !== undefined ? "--fail-on" : null,
+          opts.json ? "--json" : null,
+          format !== undefined ? "--format" : null,
+        ].filter((flag): flag is string => flag !== null);
+        if (ignored.length > 0) {
+          const flags = ignored.join(", ");
           process.stderr.write(
-            "slopaudit: --fail-on has no effect with --list (inventory mode does " +
-              "not compute a SlopScore); drop --list to gate, or drop --fail-on\n",
+            `slopaudit: ${flags} cannot be combined with --list (inventory mode ` +
+              `only lists files — it emits no SlopScore, no JSON and no --format ` +
+              `output); drop --list to use ${flags}, or drop ${flags}\n`,
           );
           process.exitCode = 2;
           return;
         }
         await runList(path, opts);
       } else {
-        await runAudit(path, opts);
+        await runAudit(path, { ...opts, format });
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

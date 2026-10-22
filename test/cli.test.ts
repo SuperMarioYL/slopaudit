@@ -35,6 +35,15 @@ function runCli(args: string[]): ReturnType<typeof spawnSync> {
   return spawnSync(process.execPath, [distCli, ...args], { encoding: "utf8" });
 }
 
+/**
+ * Same as runCli but with an explicit cwd, so a case can assert on the report
+ * artifacts the CLI writes into the CURRENT directory (slopaudit-report.html /
+ * slopaudit-badge.svg) without polluting the repo checkout.
+ */
+function runCliIn(cwd: string, args: string[]): ReturnType<typeof spawnSync> {
+  return spawnSync(process.execPath, [distCli, ...args], { encoding: "utf8", cwd });
+}
+
 describe.skipIf(!cliAvailable)(
   "cli: parse failures are not counted as scanned (fix-parse-failure-units-counted-as-scanned)",
   () => {
@@ -98,6 +107,82 @@ describe.skipIf(!cliAvailable)(
       } finally {
         rmSync(empty, { recursive: true, force: true });
       }
+    });
+  },
+);
+
+/**
+ * fix-unknown-format-silently-ignored + fix-list-json-silently-dropped — spawn-level
+ * regression tests for two silent-drop option paths over the built CLI.
+ *
+ * v0.16.0 behavior (the bugs):
+ *  - `--format <anything-but-github>` was accepted with no validation and fell
+ *    through to the default text path: the terminal report printed, and
+ *    slopaudit-report.html + slopaudit-badge.svg were written into the cwd, all
+ *    with exit 0 — so a CI step asking for a machine format silently got human
+ *    output plus workspace mutation.
+ *  - `--list` guarded only `--fail-on`, so `--list --json` printed the text
+ *    inventory, emitted no JSON, and exited 0 — a step that looks machine-readable
+ *    reading non-JSON while reporting success.
+ */
+describe.skipIf(!cliAvailable)(
+  "cli: silently-ignored option values are usage errors (fix-unknown-format-silently-ignored, fix-list-json-silently-dropped)",
+  () => {
+    let repo: string;
+
+    beforeAll(() => {
+      repo = mkdtempSync(join(tmpdir(), "slopaudit-opts-"));
+      writeFileSync(join(repo, "ok.ts"), "export const ok = 1;\n");
+    });
+
+    afterAll(() => {
+      rmSync(repo, { recursive: true, force: true });
+    });
+
+    it("an unrecognized --format exits 2 and writes no report artifacts", () => {
+      const cwd = mkdtempSync(join(tmpdir(), "slopaudit-fmt-cwd-"));
+      try {
+        const r = runCliIn(cwd, [repo, "--format", "bogus"]);
+        expect(r.status).toBe(2);
+        expect(r.stderr).toMatch(/invalid --format value "bogus"/);
+        // The v0.16.0 bug wrote both artifacts on this path.
+        expect(existsSync(join(cwd, "slopaudit-report.html"))).toBe(false);
+        expect(existsSync(join(cwd, "slopaudit-badge.svg"))).toBe(false);
+      } finally {
+        rmSync(cwd, { recursive: true, force: true });
+      }
+    });
+
+    it("`--format json` (the plausible typo for --json) is rejected, not downgraded to text", () => {
+      const r = runCli([repo, "--format", "json"]);
+      expect(r.status).toBe(2);
+      expect(r.stderr).toMatch(/invalid --format value "json"/);
+      expect(r.stdout).not.toMatch(/SlopScore:/);
+    });
+
+    it("`--format github` still works (the accepted value is unaffected)", () => {
+      const r = runCli([repo, "--format", "github", "--no-html", "--no-badge"]);
+      expect(r.status).toBe(0);
+      expect(r.stdout).not.toMatch(/invalid --format/);
+    });
+
+    it("--list combined with --json is rejected instead of silently dropping --json", () => {
+      const r = runCli([repo, "--list", "--json"]);
+      expect(r.status).toBe(2);
+      expect(r.stderr).toMatch(/--json cannot be combined with --list/);
+      expect(r.stdout).not.toMatch(/Inventory:/);
+    });
+
+    it("--list combined with --format is rejected too", () => {
+      const r = runCli([repo, "--list", "--format", "github"]);
+      expect(r.status).toBe(2);
+      expect(r.stderr).toMatch(/--format cannot be combined with --list/);
+    });
+
+    it("--list alone still inventories (exit 0, no behavior change)", () => {
+      const r = runCli([repo, "--list"]);
+      expect(r.status).toBe(0);
+      expect(r.stdout).toMatch(/Inventory: 1 files/);
     });
   },
 );
