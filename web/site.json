@@ -115,6 +115,10 @@
     {
       "en": "Parsing can recover with warnings and some checks are local rather than whole-program analysis. The demo is a handwritten fixture, not a benchmark.",
       "zh": "解析可能在警告后继续恢复，部分检查只分析局部而非完整程序；示例是手写 fixture，不是基准测量。"
+    },
+    {
+      "en": "An audit that measures no lines (every source file empty, or none readable) is reported as nothing audited with a non-zero exit, not as a clean 0/100; files the process cannot read are named on stderr instead of being skipped silently.",
+      "zh": "未测量到任何行的审计（源文件全为空，或全部无法读取）会报告为未审计并以非零状态退出，而不是 0/100 干净；进程无法读取的文件会在 stderr 中列名，而不是被静默跳过。"
     }
   ],
   "scene": {
