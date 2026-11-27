@@ -1,5 +1,11 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
@@ -183,6 +189,128 @@ describe.skipIf(!cliAvailable)(
       const r = runCli([repo, "--list"]);
       expect(r.status).toBe(0);
       expect(r.stdout).toMatch(/Inventory: 1 files/);
+    });
+  },
+);
+
+/**
+ * fix-empty-lines-audited-reported-clean — the density denominator is
+ * `linesScanned`, so a tree whose only source files are empty scored a pristine
+ * 0/100 (clean) at exit 0 while nothing was measurable.
+ *
+ * v0.17.0 behavior (the bug): `mkdir e && : > e/a.ts && node dist/cli.js e
+ * --fail-on clean` printed "SlopScore: 0/100 (clean) / 1 files scanned · 0
+ * lines" and exited 0 — the one gate that means "fail on any slop" passed a run
+ * that measured nothing.
+ */
+describe.skipIf(!cliAvailable)(
+  "cli: an all-empty tree is nothing-audited, not a clean score (fix-empty-lines-audited-reported-clean)",
+  () => {
+    let onlyEmpty: string;
+    let healthy: string;
+
+    beforeAll(() => {
+      onlyEmpty = mkdtempSync(join(tmpdir(), "slopaudit-emptyfiles-"));
+      writeFileSync(join(onlyEmpty, "a.ts"), "");
+
+      healthy = mkdtempSync(join(tmpdir(), "slopaudit-oneline-"));
+      writeFileSync(join(healthy, "ok.ts"), "export const ok = 1;\n");
+    });
+
+    afterAll(() => {
+      for (const d of [onlyEmpty, healthy]) {
+        rmSync(d, { recursive: true, force: true });
+      }
+    });
+
+    it("exits 2 at --fail-on clean instead of passing a 0-line audit", () => {
+      const r = runCli([onlyEmpty, "--fail-on", "clean", "--json"]);
+      expect(r.status).toBe(2);
+      expect(r.stderr).toMatch(/all empty \(0 lines audited\)/);
+      // The --json machine contract still emits the score before exiting.
+      const score = JSON.parse(r.stdout);
+      expect(score.filesScanned).toBe(1);
+      expect(score.linesScanned).toBe(0);
+    });
+
+    it("says the files are empty (not 'no source files found')", () => {
+      const r = runCli([onlyEmpty]);
+      expect(r.status).toBe(2);
+      expect(r.stderr).toMatch(/all empty/);
+      expect(r.stderr).not.toMatch(/no JS\/TS source files found/);
+    });
+
+    it("a one-line tree still audits normally (exit 0)", () => {
+      const r = runCli([healthy, "--json", "--fail-on", "clean"]);
+      expect(r.status).toBe(0);
+      const score = JSON.parse(r.stdout);
+      expect(score.filesScanned).toBe(1);
+      expect(score.linesScanned).toBe(1);
+    });
+  },
+);
+
+/**
+ * fix-unreadable-files-silently-skipped — a read error was reported as a parse
+ * failure and produced no output at all, so the audit silently scored a subset
+ * of the tree.
+ *
+ * v0.17.0 behavior (the bug): a dir with a readable ok.ts plus a chmod-000
+ * secret.ts printed "1 files scanned · 1 lines · 0 findings / No slop detected.
+ * Nice." with an empty stderr, and a dir containing only the unreadable file
+ * said "none could be parsed" (it was never read).
+ *
+ * chmod-based cases need a non-root uid (root reads 000 files freely).
+ */
+const canMakeUnreadable =
+  typeof process.getuid === "function" && process.getuid() !== 0;
+
+describe.skipIf(!cliAvailable || !canMakeUnreadable)(
+  "cli: unreadable files are named, not silently skipped (fix-unreadable-files-silently-skipped)",
+  () => {
+    let mixed: string;
+    let onlyUnreadable: string;
+
+    beforeAll(() => {
+      mixed = mkdtempSync(join(tmpdir(), "slopaudit-unreadable-mixed-"));
+      writeFileSync(join(mixed, "ok.ts"), "export const ok = 1;\n");
+      writeFileSync(join(mixed, "secret.ts"), "function f(a) { return 1; }\n");
+      chmodSync(join(mixed, "secret.ts"), 0o000);
+
+      onlyUnreadable = mkdtempSync(join(tmpdir(), "slopaudit-unreadable-only-"));
+      writeFileSync(join(onlyUnreadable, "secret.ts"), "export const s = 1;\n");
+      chmodSync(join(onlyUnreadable, "secret.ts"), 0o000);
+    });
+
+    afterAll(() => {
+      for (const [dir, file] of [
+        [mixed, "secret.ts"],
+        [onlyUnreadable, "secret.ts"],
+      ] as const) {
+        try {
+          chmodSync(join(dir, file), 0o600);
+        } catch {
+          // best effort — the temp tree is removed next anyway
+        }
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("a mixed tree still exits 0 but names the unreadable file on stderr", () => {
+      const r = runCli([mixed, "--json"]);
+      expect(r.status).toBe(0);
+      const score = JSON.parse(r.stdout);
+      expect(score.filesScanned).toBe(1);
+      expect(score.linesScanned).toBe(1);
+      expect(r.stderr).toMatch(/cannot read .*secret\.ts/);
+      expect(r.stderr).toMatch(/skipped, not audited/);
+    });
+
+    it("an all-unreadable tree says 'could not be read', not 'none could be parsed'", () => {
+      const r = runCli([onlyUnreadable]);
+      expect(r.status).toBe(2);
+      expect(r.stderr).toMatch(/none could be read/);
+      expect(r.stderr).not.toMatch(/none could be parsed/);
     });
   },
 );

@@ -46,6 +46,41 @@ function leafImpl(x: number): number { return x + 1; }
     expect(findings.every((f) => f.category === "over_abstraction")).toBe(true);
     // at least one wrapper-chain finding
     expect(findings.some((f) => /wrapper chain|pass-through/.test(f.evidence))).toBe(true);
+    // fix-wrapper-chain-counts-non-wrapper-terminus: leafImpl terminates the
+    // chain but is not a forwarding layer, so the depth is the four wrappers.
+    expect(findings.some((f) => /4-deep wrapper chain/.test(f.evidence))).toBe(true);
+    expect(findings.some((f) => /5-deep wrapper chain/.test(f.evidence))).toBe(false);
+  });
+
+  // v0.18.0 fix-wrapper-chain-counts-non-wrapper-terminus: followChain pushed the
+  // callee that terminates the chain onto it, so two local wrappers delegating to
+  // an imported function were reported as a "3-deep wrapper chain … each layer
+  // single-caller pass-through" — a layer count that included a non-layer.
+  it("does not count an imported callee as a wrapper-chain layer (fix-wrapper-chain-counts-non-wrapper-terminus)", () => {
+    const twoLocalLayers = `
+import { request } from "./http";
+export function search(q: string) { return request(q); }
+export function find(q: string) { return search(q); }
+`;
+    const findings = detectOverAbstraction(unit(twoLocalLayers));
+    // Both functions are still pass-throughs — that finding is unchanged.
+    expect(findings.filter((f) => /pass-through/.test(f.evidence)).length).toBe(2);
+    // …but two local layers are not a "deep" chain.
+    expect(findings.filter((f) => /wrapper chain/.test(f.evidence))).toEqual([]);
+  });
+
+  it("still flags three genuine local layers, with depth equal to the layer count", () => {
+    const threeLocalLayers = `
+import { ext } from "./ext";
+function c(x: number) { return ext(x); }
+function b(x: number) { return c(x); }
+function a(x: number) { return b(x); }
+`;
+    const findings = detectOverAbstraction(unit(threeLocalLayers)).filter((f) =>
+      /wrapper chain/.test(f.evidence),
+    );
+    expect(findings.length).toBe(1);
+    expect(findings[0].evidence).toMatch(/3-deep wrapper chain \(a → b → c\)/);
   });
 
   it("returns [] on clean code", () => {
@@ -364,6 +399,47 @@ async function broken(a: any, b: any): any {
     expect(findings.some((f) => /empty catch/.test(f.evidence))).toBe(true);
     expect(findings.some((f) => /any/.test(f.evidence))).toBe(true);
     expect(findings.some((f) => /not awaited|promise/.test(f.evidence))).toBe(true);
+  });
+
+  // v0.18.0 fix-any-in-type-reference-uncounted: only a bare `any` and `any[]`
+  // were recognized, so the same type written as a type reference contributed
+  // nothing and the spelling decided the verdict.
+  it("counts `any` inside type references, not just bare `any`/`any[]` (fix-any-in-type-reference-uncounted)", () => {
+    const code = `
+export function viaReference(input: Array<any>, extra: any) {
+  return input.length + extra;
+}
+export function viaShorthand(input: any[], extra: any) {
+  return input.length + extra;
+}
+export function viaReturnOnly(cfg: Record<string, any>, extra: any): Promise<any> {
+  return Promise.resolve(cfg as any);
+}
+`;
+    const anyFindings = detectPlausibleButWrong(unit(code)).filter((f) =>
+      /signature uses `any`/.test(f.evidence),
+    );
+    // Array<any>/Record<string,any>/Promise<any> now count exactly like any[].
+    const lines = anyFindings.map((f) => f.line);
+    expect(lines).toEqual([2, 5, 8]);
+    expect(anyFindings.map((f) => f.evidence)).toEqual([
+      "signature uses `any` 2x — defeats type checking",
+      "signature uses `any` 2x — defeats type checking",
+      // Record<string, any> + extra: any + Promise<any> return
+      "signature uses `any` 3x — defeats type checking",
+    ]);
+  });
+
+  it("still reports no any finding for a signature without `any`", () => {
+    const code = `
+export function clean(input: number[], cb: (n: number) => void): Promise<void> {
+  return Promise.resolve(cb(input[0]));
+}
+`;
+    const anyFindings = detectPlausibleButWrong(unit(code)).filter((f) =>
+      /signature uses `any`/.test(f.evidence),
+    );
+    expect(anyFindings).toEqual([]);
   });
 
   it("returns [] on clean code", () => {

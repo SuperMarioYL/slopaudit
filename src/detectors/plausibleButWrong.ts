@@ -105,34 +105,58 @@ export function detectPlausibleButWrong(unit: FileUnit): SlopFinding[] {
 function countAnyInSignature(node: any): number {
   let count = 0;
   for (const p of node.params ?? []) {
-    if (paramIsAny(p)) count++;
+    count += countAnyInParam(p);
   }
-  if (typeAnnIsAny(node.returnType)) count++;
+  count += countAnyInTypeAnnotation(node.returnType);
   return count;
 }
 
-function paramIsAny(p: any): boolean {
-  if (!p) return false;
-  // Identifier with annotation, or AssignmentPattern wrapping one
-  if (p.type === "Identifier") return typeAnnIsAny(p.typeAnnotation);
-  if (p.type === "AssignmentPattern") return paramIsAny(p.left);
-  if (p.type === "RestElement") return typeAnnIsAny(p.typeAnnotation);
-  return false;
+/**
+ * How many `any`s a single parameter's type carries. Only named params are
+ * inspected (bare identifier, default-wrapped, rest) — destructured patterns
+ * stay out of scope, as before.
+ */
+function countAnyInParam(p: any): number {
+  if (!p) return 0;
+  if (p.type === "Identifier") return countAnyInTypeAnnotation(p.typeAnnotation);
+  if (p.type === "AssignmentPattern") return countAnyInParam(p.left);
+  if (p.type === "RestElement") return countAnyInTypeAnnotation(p.typeAnnotation);
+  return 0;
 }
 
-function typeAnnIsAny(ann: any): boolean {
-  if (!ann) return false;
+function countAnyInTypeAnnotation(ann: any): number {
+  if (!ann) return 0;
   // TSTypeAnnotation wraps the actual type
   const t = ann.typeAnnotation ?? ann;
-  if (!t) return false;
-  if (t.type === "TSAnyKeyword") return true;
-  // any[] , Array<any>
-  if (t.type === "TSArrayType") return typeIsAny(t.elementType);
-  return false;
+  return countAnyInType(t);
 }
 
-function typeIsAny(t: any): boolean {
-  return !!t && t.type === "TSAnyKeyword";
+/**
+ * Count every `TSAnyKeyword` in a type subtree.
+ *
+ * fix-any-in-type-reference-uncounted: counting used to match two hard-coded
+ * shapes — a bare `TSAnyKeyword` and `TSArrayType` of any — so `any[]` was seen
+ * but the same type spelled as a type REFERENCE was not: `Array<any>`,
+ * `Promise<any>`, `Record<string, any>` all contributed 0 (the old comment even
+ * claimed `Array<any>` was covered). The spelling therefore decided the verdict:
+ * `f(xs: Array<any>, cb: any)` produced no finding while `f(xs: any[], cb: any)`
+ * produced "signature uses `any` 2x". Walking the subtree counts nested type
+ * arguments, members and function-type positions, so one `any` is one `any`
+ * regardless of how it is written.
+ */
+function countAnyInType(node: any): number {
+  if (!node || typeof node !== "object") return 0;
+  if (Array.isArray(node)) {
+    return node.reduce((n: number, child) => n + countAnyInType(child), 0);
+  }
+  if (node.type === "TSAnyKeyword") return 1;
+  let count = 0;
+  for (const key of Object.keys(node)) {
+    if (key === "loc" || key === "start" || key === "end") continue;
+    const child = node[key];
+    if (child && typeof child === "object") count += countAnyInType(child);
+  }
+  return count;
 }
 
 // ---- unawaited promises ----------------------------------------------------

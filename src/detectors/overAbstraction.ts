@@ -188,6 +188,19 @@ function unwrapCall(expr: any): any | null {
   return null;
 }
 
+/**
+ * Follow the forwarding chain from `start` and return its LAYERS.
+ *
+ * fix-wrapper-chain-counts-non-wrapper-terminus: the chain used to include the
+ * callee that ends it — a non-local callee was pushed before breaking, and a
+ * local callee that does not itself forward was pushed because only its call
+ * count was checked. That made the reported depth count a leaf as a layer while
+ * the evidence claims "each layer single-caller pass-through": two local
+ * wrappers delegating to an imported function were reported as a "3-deep
+ * wrapper chain", and a genuine four-layer chain as "5-deep". A link is only a
+ * layer when it is itself a local pass-through, so the chain now holds local
+ * layers only and its length is the true depth.
+ */
 function followChain(
   start: string,
   forwardsTo: Map<string, string>,
@@ -200,12 +213,11 @@ function followChain(
   while (forwardsTo.has(cur)) {
     const next = forwardsTo.get(cur)!;
     if (seen.has(next)) break; // cycle guard
-    // only continue the chain if the next link is itself a local fn AND only
-    // called once (single caller) — that's what makes it a needless layer.
-    if (!fnByName.has(next)) {
-      chain.push(next);
-      break;
-    }
+    // A link is a wrapper LAYER only if it is a local pass-through; anything
+    // else terminates the chain without being counted as a layer.
+    if (!fnByName.has(next) || !forwardsTo.has(next)) break;
+    // …and it must have this single caller — that's what makes it a needless
+    // layer.
     if ((callCounts.get(next) ?? 0) > 1) break;
     chain.push(next);
     seen.add(next);

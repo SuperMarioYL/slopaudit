@@ -116,10 +116,10 @@ node dist/cli.js ./src --format github
 
 ```yaml
 - uses: actions/checkout@v4
-- uses: SuperMarioYL/slopaudit@v0.17.0
+- uses: SuperMarioYL/slopaudit@v0.18.0
   with:
     path: .
-    version: "0.17.0"
+    version: "0.18.0"
     fail-on: heavy
     ignore: |
       examples/**

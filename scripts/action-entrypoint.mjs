@@ -41,14 +41,19 @@ export function resolveVersion(env = process.env) {
  * `score=0`/`band=clean` step outputs while the job failed — the exact
  * false-clean the v0.3.0 empty-scan fix removed, relocated to the Action layer.
  * Detect it here so the summary/outputs treat it as "nothing audited".
+ *
+ * fix-empty-lines-audited-reported-clean: the same vacuous score has a second
+ * shape — `filesScanned > 0` with `linesScanned === 0` (every source file is
+ * empty). The CLI now exits 2 on that too, so the Action layer must classify it
+ * as nothing-audited as well, or the job summary prints a green 0/100 headline
+ * for a run that measured zero lines.
  */
 export function isEmptyScan(score) {
-  return (
-    !!score &&
-    typeof score === "object" &&
-    typeof score.filesScanned === "number" &&
-    score.filesScanned === 0
-  );
+  if (!score || typeof score !== "object") return false;
+  if (typeof score.filesScanned === "number" && score.filesScanned === 0) {
+    return true;
+  }
+  return typeof score.linesScanned === "number" && score.linesScanned === 0;
 }
 
 /**

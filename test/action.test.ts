@@ -95,9 +95,35 @@ describe("fix-action-empty-scan-false-clean", () => {
 
   it("isEmptyScan detects the empty-scan JSON (filesScanned===0)", () => {
     expect(isEmptyScan(emptyScanScore)).toBe(true);
-    expect(isEmptyScan({ ...emptyScanScore, filesScanned: 5 })).toBe(false);
+    expect(
+      isEmptyScan({ ...emptyScanScore, filesScanned: 5, linesScanned: 120 }),
+    ).toBe(false);
     expect(isEmptyScan(null)).toBe(false);
     expect(isEmptyScan(undefined)).toBe(false);
+  });
+
+  // v0.18.0 fix-empty-lines-audited-reported-clean: a tree of empty source files
+  // emits {filesScanned:1, linesScanned:0} then exits 2, so filesScanned alone is
+  // no longer enough to tell "nothing audited" from a real score.
+  it("isEmptyScan also detects a zero-line scan (filesScanned>0, linesScanned===0)", () => {
+    const emptyFileScore = {
+      score: 0,
+      band: "clean",
+      filesScanned: 1,
+      linesScanned: 0,
+      findings: [],
+      byFile: {},
+    };
+    expect(isEmptyScan(emptyFileScore)).toBe(true);
+    writeStepSummary(emptyFileScore, "", 2);
+    const summary = readFileSync(summaryFile, "utf8");
+    expect(summary).not.toContain("SlopScore: 0/100 (clean)");
+    expect(summary).not.toContain("🟢");
+    expect(summary).toMatch(/no SlopScore/i);
+    setOutputs(emptyFileScore, 2);
+    const out = readFileSync(outputFile, "utf8");
+    expect(out).toContain("score=\n");
+    expect(out).toContain("band=\n");
   });
 
   it("does not write a clean badge/summary for an empty scan", () => {

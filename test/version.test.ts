@@ -78,6 +78,23 @@ describe("version lockstep across user-facing surfaces (fix-readme-action-exampl
     expect(site.content_version).toBe(version);
   });
 
+  /**
+   * fix-package-lock-version-drift: package-lock.json's root version (both the
+   * top-level field and packages[""]) was still "0.15.0" at the v0.17.0 tag —
+   * two releases after VERSION, package.json and web/site.json moved on — and
+   * `npm install --package-lock-only` silently rewrote it, leaving every
+   * contributor a spurious lock diff. The VERSION vs package.json case above did
+   * not cover this third manifest, so the drift survived two bumps.
+   */
+  it("package-lock.json's root version matches the release version", () => {
+    const lock = JSON.parse(readFileSync(join(root, "package-lock.json"), "utf8")) as {
+      version?: string;
+      packages?: Record<string, { version?: string }>;
+    };
+    expect(lock.version).toBe(bareVersion);
+    expect(lock.packages?.[""]?.version).toBe(bareVersion);
+  });
+
   it("CHANGELOG.md documents the release version", () => {
     const changelog = readFileSync(join(root, "CHANGELOG.md"), "utf8");
     expect(changelog).toContain(`## [${bareVersion}]`);

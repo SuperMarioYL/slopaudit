@@ -11,6 +11,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Hosted team tier: SlopScore *history* across org repos, delta-vs-main gating, leadership dashboard.
 - Additional language detectors (Python / Go / Rust) behind the existing pure-function detector seam.
 
+## [0.18.0] - 2026-11-28
+
+Fix-only release. Five verified fixes — no new detector, band, primitive, or
+runtime dependency. Four are grounded in behaviour reproduced against the
+shipped v0.17.0 CLI/source and guarded by regression tests; the fifth restores
+package-lock version lockstep.
+
+### Fixed
+- **A tree whose source files are all empty no longer reports a pristine
+  0/100 clean** (`src/cli.ts`, `scripts/action-entrypoint.mjs`,
+  `fix-empty-lines-audited-reported-clean`). The only nothing-audited guard was
+  `filesScanned === 0`, but the SlopScore is a per-100-lines density
+  (`src/score/aggregate.ts`) whose denominator is `linesScanned`. An empty file
+  counts 0 lines yet still parses to a valid empty Program, so it was kept as a
+  scanned unit: a tree of empty `.ts` files printed "SlopScore: 0/100 (clean) /
+  1 files scanned · 0 lines" and exited 0 — passing even `--fail-on clean`
+  while nothing was measurable (the v0.3.0/v0.16.0 false-green class, one
+  denominator lower). `linesScanned === 0` is now nothing-audited too: `--json`
+  still emits the score, stderr says the files are all empty, exit is 2. The
+  Action's `isEmptyScan` gained the same arm, so the job summary says "No
+  SlopScore was produced" instead of a green 0/100 headline.
+- **An unreadable source file is no longer dropped from the audit in silence**
+  (`src/cli.ts`, `fix-unreadable-files-silently-skipped`). A read error was
+  collapsed into the same `null` as a hard parse failure and counted as
+  "unparseable" with no output at all, so a file the process cannot read
+  (chmod-000 after a bad checkout, another user's file) vanished from
+  `filesScanned`/`linesScanned` while the run reported clean and exited 0 — the
+  score silently described a subset of the tree. `loadUnit` now returns a tagged
+  outcome, `collectUnits` warns once per unreadable path on stderr, and the
+  nothing-audited message distinguishes "could not be read" from "could not be
+  parsed". Exit codes are unchanged for the mixed (0) and all-unreadable (2)
+  cases.
+- **`over_abstraction` no longer counts a non-wrapper callee as a chain layer**
+  (`src/detectors/overAbstraction.ts`,
+  `fix-wrapper-chain-counts-non-wrapper-terminus`). `followChain` pushed the
+  callee that terminates the chain onto it, so `search()` delegating to an
+  imported `request()` plus `find()` delegating to `search()` was reported as a
+  "3-deep wrapper chain (find → search → request), each layer single-caller
+  pass-through" — two local layers, and the last one imported. A genuine
+  four-layer chain was likewise reported as "5-deep". Only local pass-through
+  links are layers now, so depth and the "each layer" claim are both true.
+- **`any` written inside a type reference is counted by the any-heavy signature
+  check** (`src/detectors/plausibleButWrong.ts`,
+  `fix-any-in-type-reference-uncounted`). The check recognized only a bare
+  `any` and `any[]`, so `Array<any>`, `Promise<any>` and
+  `Record<string, any>` contributed nothing: `handlerA(input: Array<any>, extra:
+  any)` produced no finding while `handlerB(input: any[], extra: any)` produced
+  "signature uses `any` 2x". Every `TSAnyKeyword` in the annotation subtree is
+  counted now, so the spelling no longer decides the verdict.
+- **package-lock.json's root version is back in lockstep**
+  (`package-lock.json`, `test/version.test.ts`,
+  `fix-package-lock-version-drift`). Both root version fields were still
+  "0.15.0" at the v0.17.0 tag — two releases after the VERSION file, package.json
+  and web/site.json moved on — and `npm install --package-lock-only` silently
+  rewrote them, giving every contributor a spurious lock diff. The lockstep test
+  now also pins the lock's root version (top-level and `packages[""]`) to
+  package.json's.
+
 ## [0.17.0] - 2026-10-23
 
 Fix-only release. Three verified CLI-contract fixes — no new detector, band,

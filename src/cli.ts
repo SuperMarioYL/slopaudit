@@ -105,9 +105,10 @@ interface RunOptions {
 }
 
 /**
- * Read + parse a single file into a FileUnit, or null if it can't be read.
- * parse.ts uses errorRecovery so a parse never throws; a soft error is logged
- * to stderr but the unit is still produced with whatever AST was recovered.
+ * Outcome of reading + parsing one walked file. `unparseable` (the file was
+ * read but Babel could not produce an AST) and `unreadable` (the file could not
+ * even be read) are separate because only the first is a parse problem, and
+ * only the second means the audit never saw the file's bytes at all.
  *
  * fix-parse-failure-units-counted-as-scanned: a HARD parse failure (parseFile
  * returned `ast: null`) produces a unit every detector returns [] for, so the
@@ -119,31 +120,47 @@ interface RunOptions {
  * filesScanned === 0). The unit is now dropped; the parse warning already went
  * to stderr, and runAudit reports the unparseable count in the nothing-audited
  * message.
+ *
+ * fix-unreadable-files-silently-skipped: the read error used to be collapsed
+ * into the same `null` as a parse failure, so a file the process cannot read
+ * (a chmod-000 file after a bad checkout, another user's file) was dropped from
+ * filesScanned/linesScanned with NO stderr output while the run reported clean
+ * — the audit silently scored a subset of the tree. The reason is now carried
+ * out so collectUnits can name the file, and runAudit can say "could not be
+ * read" instead of blaming the parser.
  */
-async function loadUnit(filePath: string): Promise<FileUnit | null> {
+type LoadOutcome =
+  | { kind: "unit"; unit: FileUnit }
+  | { kind: "unparseable" }
+  | { kind: "unreadable"; reason: string };
+
+async function loadUnit(filePath: string): Promise<LoadOutcome> {
   let code: string;
   try {
     code = await readFile(filePath, "utf8");
-  } catch {
-    return null;
+  } catch (err) {
+    return { kind: "unreadable", reason: err instanceof Error ? err.message : String(err) };
   }
   const { ast, lineCount, error } = parseFile(filePath, code);
   if (error) {
     process.stderr.write(`slopaudit: parse warning for ${filePath}: ${error}\n`);
   }
-  if (!ast) return null; // hard parse failure — nothing was audited in this file
-  return { file: filePath, code, lineCount, ast };
+  if (!ast) return { kind: "unparseable" }; // hard parse failure — nothing was audited
+  return { kind: "unit", unit: { file: filePath, code, lineCount, ast } };
 }
 
 /**
- * The walked files plus how many were found but dropped as unparseable (hard
- * parse failure). fix-parse-failure-units-counted-as-scanned: runAudit needs
- * the count so its zero-scan error can say "found but none could be parsed"
- * instead of "no JS/TS source files found".
+ * The walked files plus how many were found but contributed no audited unit:
+ * `unparseable` (hard parse failure) and `unreadable` (read error, already
+ * warned about on stderr by collectUnits). fix-parse-failure-units-counted-as-
+ * scanned / fix-unreadable-files-silently-skipped: runAudit needs both counts so
+ * its nothing-audited error can name the real cause instead of always saying
+ * "none could be parsed".
  */
 interface CollectedUnits {
   units: FileUnit[];
   unparseable: number;
+  unreadable: number;
 }
 
 async function collectUnits(
@@ -153,12 +170,60 @@ async function collectUnits(
   const files = await walk(root, extraIgnores);
   const units: FileUnit[] = [];
   let unparseable = 0;
+  let unreadable = 0;
   for (const f of files) {
-    const unit = await loadUnit(f);
-    if (unit) units.push(unit);
-    else unparseable++;
+    const outcome = await loadUnit(f);
+    if (outcome.kind === "unit") {
+      units.push(outcome.unit);
+    } else if (outcome.kind === "unreadable") {
+      unreadable++;
+      // warn per file: a silently skipped file means the score was computed on
+      // a subset of the tree, which reads as a clean result it is not.
+      process.stderr.write(
+        `slopaudit: cannot read ${f}: ${outcome.reason} — skipped, not audited\n`,
+      );
+    } else {
+      unparseable++;
+    }
   }
-  return { units, unparseable };
+  return { units, unparseable, unreadable };
+}
+
+/**
+ * Explain why a run audited nothing. Fixes the two ways the old single-branch
+ * message lied: an all-unreadable tree was reported as "none could be parsed"
+ * (they were never read), and a tree that parsed fine but contained zero
+ * measurable lines was not reported at all (it scored a pristine 0/100).
+ * `found` excludes units that were successfully read and parsed.
+ */
+function nothingAuditedMessage(
+  root: string,
+  counts: CollectedUnits,
+  filesScanned: number,
+): string {
+  if (filesScanned > 0) {
+    // fix-empty-lines-audited-reported-clean: files parsed, but every one of
+    // them was empty, so the density denominator is 0 and the score is a
+    // vacuous 0/100 "clean" rather than a measurement.
+    return (
+      `${filesScanned} JS/TS file(s) found under ${root} are all empty ` +
+      `(0 lines audited) — nothing to score`
+    );
+  }
+  const found = counts.unparseable + counts.unreadable;
+  if (found === 0) {
+    return `no JS/TS source files found under ${root} — nothing audited`;
+  }
+  if (counts.unreadable === 0) {
+    return `${found} JS/TS file(s) found under ${root} but none could be parsed — nothing audited`;
+  }
+  if (counts.unparseable === 0) {
+    return `${counts.unreadable} JS/TS file(s) found under ${root} but none could be read — nothing audited`;
+  }
+  return (
+    `${found} JS/TS file(s) found under ${root} but none could be audited ` +
+    `(${counts.unparseable} unparseable, ${counts.unreadable} unreadable) — nothing audited`
+  );
 }
 
 async function runList(rootArg: string, opts: RunOptions): Promise<void> {
@@ -170,7 +235,8 @@ async function runList(rootArg: string, opts: RunOptions): Promise<void> {
 
 async function runAudit(rootArg: string, opts: RunOptions): Promise<void> {
   const root = resolve(rootArg);
-  const { units, unparseable } = await collectUnits(root, opts.ignore ?? []);
+  const collected = await collectUnits(root, opts.ignore ?? []);
+  const { units } = collected;
 
   const findings: SlopFinding[] = [];
   let linesScanned = 0;
@@ -204,14 +270,18 @@ async function runAudit(rootArg: string, opts: RunOptions): Promise<void> {
   // count toward filesScanned, so a tree whose only source file fails to parse
   // lands here too instead of reporting a pristine 0/100 green that passes even
   // `--fail-on clean` while nothing was audited. Say which case it was.
-  if (score.filesScanned === 0) {
+  //
+  // fix-empty-lines-audited-reported-clean: the same false green has a second
+  // shape one denominator lower — filesScanned > 0 but linesScanned === 0
+  // (every source file is empty), where the density in aggregate.ts is 0 because
+  // its denominator is the line count. Those lines are not measurable, so they
+  // are "nothing audited" too, not a clean score.
+  if (score.filesScanned === 0 || score.linesScanned === 0) {
     if (opts.json) {
       process.stdout.write(JSON.stringify(score, null, 2) + "\n");
     }
     process.stderr.write(
-      unparseable > 0
-        ? `slopaudit: ${unparseable} JS/TS file(s) found under ${root} but none could be parsed — nothing audited\n`
-        : `slopaudit: no JS/TS source files found under ${root} — nothing audited\n`,
+      `slopaudit: ${nothingAuditedMessage(root, collected, score.filesScanned)}\n`,
     );
     process.exitCode = 2;
     return;

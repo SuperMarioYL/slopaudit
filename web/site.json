@@ -11,7 +11,7 @@
   "meta": {
     "visual_style": "neon-particle",
     "demo_source": "docs/demo-results.json",
-    "content_version": "v0.17.0"
+    "content_version": "v0.18.0"
   },
   "hero": {
     "headline": {
@@ -225,8 +225,13 @@
       }
     ]
   },
-  "content_version": "v0.17.0",
+  "content_version": "v0.18.0",
   "changelog": [
+    {
+      "version": "v0.18.0",
+      "date": "2026-11-28",
+      "note": "fix-only release. (1) fix-empty-lines-audited-reported-clean: the nothing-audited guard only checked filesScanned, but the score is a per-100-lines density, so a tree whose source files were all empty reported a pristine 0/100 clean at exit 0 and passed even --fail-on clean; zero audited lines is now nothing-audited (exit 2), and the Action summary no longer shows a green 0/100 for it. (2) fix-unreadable-files-silently-skipped: a file the process could not read was dropped from the audit with no warning and counted as a parse failure, so the score silently described a subset of the tree; unreadable paths are now named on stderr and the nothing-audited message distinguishes read failures from parse failures. (3) fix-wrapper-chain-counts-non-wrapper-terminus: over_abstraction pushed the callee that ends a forwarding chain onto the chain, so two local wrappers delegating to an imported function were reported as a 3-deep chain; only local pass-through links count as layers now. (4) fix-any-in-type-reference-uncounted: the any-heavy signature check saw bare `any` and `any[]` but not `Array<any>`/`Promise<any>`/`Record<string, any>`, so the spelling decided the verdict; every `any` in the annotation is counted now. (5) fix-package-lock-version-drift: package-lock.json's root version was still 0.15.0 at v0.17.0 and npm silently rewrote it on install; the lockstep test now pins it too."
+    },
     {
       "version": "v0.17.0",
       "date": "2026-10-23",
